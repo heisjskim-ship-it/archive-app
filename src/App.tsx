@@ -93,6 +93,21 @@ const uploadToCloudinary = async (file) => {
   return data.secure_url;
 };
 
+// ==============================================
+// 📅 날짜 포맷 변환 공통 헬퍼 함수
+// ==============================================
+const formatDateTime = (isoString) => {
+  if (!isoString) return '미기록';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return isoString;
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+};
+
 const TUTORIAL_STEPS = {
   teacher: [
     { title: '환영합니다, 선생님!', desc: '데이터베이스가 연동된 문제 풀이 아카이브입니다!', icon: <Sparkles className="text-amber-500 mx-auto mb-4" size={56}/> },
@@ -771,6 +786,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* 💡 선생님 화면: 제출 일시가 포함된 오답 현황 테이블 */}
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-lg text-slate-900">🎓 학생 풀이 현황판</h3>
@@ -779,7 +795,14 @@ export default function App() {
                     <div className="overflow-x-auto border rounded-xl">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50 border-b text-slate-500">
-                          <tr><th className="p-3">학생</th><th className="p-3">문제</th><th className="p-3 text-center">회차</th><th className="p-3 text-center">상태</th><th className="p-3 text-center">코칭</th></tr>
+                          <tr>
+                            <th className="p-3">학생</th>
+                            <th className="p-3">문제</th>
+                            <th className="p-3 text-center">회차</th>
+                            <th className="p-3 text-center">제출 일시</th>
+                            <th className="p-3 text-center">상태</th>
+                            <th className="p-3 text-center">코칭</th>
+                          </tr>
                         </thead>
                         <tbody className="divide-y text-slate-700">
                           {filteredSubmissions.map(sub => {
@@ -790,11 +813,12 @@ export default function App() {
                                 <td className="p-3 font-bold">{sub.studentName}</td>
                                 <td className="p-3 truncate max-w-[150px]">{relatedQ.title}</td>
                                 <td className="p-3 text-center text-[10px] font-bold text-slate-400">{attemptsCount}회</td>
+                                <td className="p-3 text-center font-mono text-slate-500 text-[11px]">{formatDateTime(sub.submittedAt)}</td>
                                 <td className="p-3 text-center"><span className={`px-2 py-0.5 rounded text-[9px] font-bold ${sub.status==='피드백 완료'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{sub.status}</span></td>
                                 <td className="p-3 text-center">
                                   <button onClick={()=>{ 
                                     setViewingSubmission(sub); setSelectedQuestion(relatedQ); setActiveFeedbackSubmissionId(sub.id); 
-                                    const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl }];
+                                    const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl, submittedAt: sub.submittedAt }];
                                     const latestAtt = atts[atts.length - 1];
                                     setFeedbackInputText(latestAtt.feedbackText||''); setFeedbackInputImagePreview(latestAtt.feedbackImageUrl||''); 
                                     setSelectedAttemptIdx(atts.length - 1);
@@ -1057,8 +1081,17 @@ export default function App() {
                               <ArrowLeft size={14}/> 풀이 목록으로 돌아가기
                             </button>
                             
-                            <div className="flex justify-between items-end mb-4">
+                            <div className="flex justify-between items-end mb-1">
                               <h4 className="font-extrabold text-emerald-600 flex items-center gap-1 text-sm"><CheckCircle size={16}/> {viewingSubmission.studentName} 학생 풀이 첨삭</h4>
+                            </div>
+
+                            {/* 💡 제출 시간 뱃지 추가 */}
+                            <div className="mb-4 bg-slate-100 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 flex items-center gap-1.5 w-fit">
+                              <span>📅</span> 
+                              <span>제출 시간:</span> 
+                              <span className="font-mono text-slate-800 font-bold bg-white px-2 py-0.5 rounded shadow-sm">
+                                {formatDateTime(currentAttempt.submittedAt || viewingSubmission.submittedAt)}
+                              </span>
                             </div>
 
                             {/* 💡 선생님 화면: 스크롤 제거, flex-wrap 으로 변경하여 누르기 편하게 개선 */}
@@ -1118,7 +1151,7 @@ export default function App() {
                                 <div key={sub.id} onClick={() => { 
                                   setViewingSubmission(sub); 
                                   setActiveFeedbackSubmissionId(sub.id); 
-                                  const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl }]; 
+                                  const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl, submittedAt: sub.submittedAt }]; 
                                   const latestAtt = atts[atts.length - 1]; 
                                   setFeedbackInputText(latestAtt.feedbackText||''); 
                                   setFeedbackInputImagePreview(latestAtt.feedbackImageUrl||''); 
@@ -1159,6 +1192,15 @@ export default function App() {
                           <div className={`p-4 rounded-2xl flex justify-between items-center ${isMy ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-200'}`}>
                             <span className="font-extrabold text-sm flex items-center gap-2">{isMy ? <><User size={16} className="text-indigo-600"/> 내 오답 노트</> : <><Users size={16} className="text-slate-600"/> {targetSub.studentName} 학생의 풀이</>}</span>
                             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${hasFeed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
+                          </div>
+
+                          {/* 💡 학생 오답노트: 해당 회차의 제출 시간 표시 */}
+                          <div className="bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 flex items-center gap-1.5 w-fit shrink-0">
+                            <span>📅</span> 
+                            <span>제출 시간:</span> 
+                            <span className="font-mono text-slate-800 font-bold bg-white px-2 py-0.5 rounded shadow-sm">
+                              {formatDateTime(currentAttempt.submittedAt || targetSub.submittedAt)}
+                            </span>
                           </div>
 
                           {/* 💡 학생 화면: 스크롤 제거, flex-wrap 으로 변경하여 누르기 편하게 개선 */}
@@ -1235,7 +1277,11 @@ export default function App() {
                               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
                                 {targetSub.peerComments && targetSub.peerComments.length > 0 ? targetSub.peerComments.map((/** @type {any} */ c) => (
                                   <div key={c.id} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-xs font-medium text-slate-700">
-                                    <div className="flex justify-between items-center mb-1"><span className="font-extrabold">{c.authorName}</span><span className="text-[9px] text-slate-400">{c.createdAt?.split(' ')?.[1] || ''}</span></div>
+                                    {/* 💡 피드백 댓글의 날짜 포맷 변경 */}
+                                    <div className="flex justify-between items-center mb-1">
+                                      <span className="font-extrabold">{c.authorName}</span>
+                                      <span className="text-[9px] text-slate-400 font-mono">{formatDateTime(c.createdAt)}</span>
+                                    </div>
                                     <p>{c.text}</p>
                                   </div>
                                 )) : <p className="text-[10px] text-center text-slate-400 font-bold py-4">첫 번째 피드백을 남겨주세요!</p>}
