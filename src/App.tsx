@@ -885,7 +885,7 @@ export default function App() {
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-amber-200">
                   <Sparkles size={12}/> 실시간 첨삭 및 챌린지 오답방
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">수행 및 수능 완벽 대비<br/>문제 풀이 아카이브</h2>
+                <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">문제 풀이 역량 향상 시스템<br/>문제 풀고 선생님께 첨삭+피드백 받자!</h2>
                 <div className="bg-slate-950/40 p-3 rounded-xl border border-white/10 text-indigo-100 text-xs font-medium max-w-lg space-y-1.5">
                   <p className="flex items-start gap-1.5"><ShieldAlert size={14} className="text-amber-400 shrink-0"/> 저작권 유의: 무단 유출 및 배포를 엄격히 금지합니다.</p>
                   <p className="flex items-start gap-1.5"><Key size={14} className="text-emerald-400 shrink-0"/> 계정 보안: 외부인에게 접속 정보를 공유하지 마세요.</p>
