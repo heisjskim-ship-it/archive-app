@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, Upload, Filter, CheckCircle, User, Plus, Trash2, Eye, LogOut, 
-  FileText, ChevronRight, Check, AlertCircle, Search, Hash, Users, UserPlus, 
-  Key, ShieldAlert, MessageSquare, Sparkles, Maximize2, LogIn, Pin, Trophy, 
+  FileText, ChevronRight, Check, AlertCircle, Search, Users, UserPlus, 
+  Key, ShieldAlert, MessageSquare, Sparkles, LogIn, Pin, Trophy, 
   MessageCircle, Image as ImageIcon, X, ArrowRight, ArrowLeft, Loader2
 } from 'lucide-react';
 
@@ -21,8 +21,7 @@ import {
 // ==============================================
 // 🔥 Firebase 및 Cloudinary 설정
 // ==============================================
-// 💡 StackBlitz나 로컬에서 바로 테스트하시려면 아래 "" 쌍따옴표 안에 
-// 메모해두신 API 키값들을 직접 붙여넣어 주세요!
+// @ts-ignore
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyCFai50jHiNpwyZl9c16MsetXzIbWRp7x8", 
   authDomain: "archiveapp-641a2.firebaseapp.com",
@@ -37,8 +36,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // Canvas 프리뷰 구동을 위한 경로 헬퍼
+// @ts-ignore
 const isCanvas = typeof __app_id !== 'undefined';
+// @ts-ignore
 const canvasAppId = isCanvas ? __app_id : 'default-app-id';
+
+/**
+ * @param {string} colName
+ */
 const getColRef = (colName) => {
   if (isCanvas) return collection(db, 'artifacts', canvasAppId, 'public', 'data', colName);
   return collection(db, colName); // 실제 배포 시
@@ -47,8 +52,10 @@ const getColRef = (colName) => {
 // ==============================================
 // ☁️ Cloudinary 이미지 업로드 헬퍼 함수
 // ==============================================
+/**
+ * @param {File} file
+ */
 const uploadToCloudinary = async (file) => {
-  // 💡 아래 "" 안에 Cloudinary에서 메모하신 값을 넣어주세요.
   const cloudName = "dyhaocbcx"; 
   const uploadPreset = "archive_preset"; 
 
@@ -88,8 +95,10 @@ const TUTORIAL_STEPS = {
 };
 
 export default function App() {
-  // 상태 관리 (State)
+  // 상태 관리 (State) - TS 컴파일러가 'never'나 'null' 타입 에러를 뿜지 않도록 JSDoc 제네릭 선언 적용
+  /** @type {[any, React.Dispatch<any>]} */
   const [firebaseUser, setFirebaseUser] = useState(null); 
+  /** @type {[any, React.Dispatch<any>]} */
   const [currentUser, setCurrentUser] = useState(null); 
   const [isLoading, setIsLoading] = useState(false); 
   
@@ -104,8 +113,11 @@ export default function App() {
   const [tutorial, setTutorial] = useState({ show: false, role: '', step: 0 });
   const [hasTeacherSeenTutorial, setHasTeacherSeenTutorial] = useState(false);
 
+  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [questions, setQuestions] = useState([]);
+  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [students, setStudents] = useState([]);
+  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [submissions, setSubmissions] = useState([]);
 
   const [teacherSubTab, setTeacherSubTab] = useState('content');
@@ -119,18 +131,23 @@ export default function App() {
   const [teacherQuestionSearch, setTeacherQuestionSearch] = useState('');
   const [submissionSearch, setSubmissionSearch] = useState('');
   
+  /** @type {[string | null, React.Dispatch<React.SetStateAction<string | null>>]} */
   const [activeFeedbackSubmissionId, setActiveFeedbackSubmissionId] = useState(null);
   const [feedbackInputText, setFeedbackInputText] = useState('');
+  /** @type {[File | null, React.Dispatch<React.SetStateAction<File | null>>]} */
   const [feedbackInputImage, setFeedbackInputImage] = useState(null);
   const [feedbackInputImagePreview, setFeedbackInputImagePreview] = useState('');
 
   const [activeTab, setActiveTab] = useState('all'); 
   const [studentQuestionSearch, setStudentQuestionSearch] = useState(''); 
+  /** @type {[any, React.Dispatch<any>]} */
   const [selectedQuestion, setSelectedQuestion] = useState(null);
+  /** @type {[File | null, React.Dispatch<React.SetStateAction<File | null>>]} */
   const [studentSolutionImage, setStudentSolutionImage] = useState(null);
   const [studentSolutionPreview, setStudentSolutionPreview] = useState('');
   const [isSharedChecked, setIsSharedChecked] = useState(true);
 
+  /** @type {[any, React.Dispatch<any>]} */
   const [viewingSubmission, setViewingSubmission] = useState(null); 
   const [peerCommentInput, setPeerCommentInput] = useState('');
 
@@ -138,17 +155,24 @@ export default function App() {
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
   const [alert, setAlert] = useState({ show: false, message: '' });
 
+  /** @param {string} msg */
   const alertMessage = (msg) => {
     setAlert({ show: true, message: msg });
     setTimeout(() => setAlert({ show: false, message: '' }), 3500);
   };
+  /**
+   * @param {string} imageUrl
+   * @param {string} title
+   */
   const openLightbox = (imageUrl, title) => setLightbox({ show: true, imageUrl, title });
 
   // 🔥 Firebase 초기 인증 및 실시간 데이터 리스너 세팅
   useEffect(() => {
     const initAuth = async () => {
       if (isCanvas) {
+        // @ts-ignore
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          // @ts-ignore
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
@@ -169,13 +193,13 @@ export default function App() {
     setIsLoading(true);
     const unsubQuestions = onSnapshot(getColRef('questions'), (snapshot) => {
       const qList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      qList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      qList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setQuestions(qList);
     });
 
     const unsubSubmissions = onSnapshot(getColRef('submissions'), (snapshot) => {
       const sList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      sList.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+      sList.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
       setSubmissions(sList);
     });
 
@@ -193,6 +217,7 @@ export default function App() {
 
   // 글로벌 Ctrl+V (클립보드) 이벤트 리스너
   useEffect(() => {
+    /** @param {any} e */
     const handlePaste = (e) => {
       if(tutorial.show || isLoading) return;
       const items = (e.clipboardData || window.clipboardData)?.items;
@@ -221,8 +246,10 @@ export default function App() {
   }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading]);
 
   // 🔥 Firebase 회원 인증 및 관리 로직
+  /** @param {string} username */
   const generateEmail = (username) => `${username}@archive.edu`;
 
+  /** @param {React.FormEvent} e */
   const handleStudentSignUp = async (e) => {
     e.preventDefault();
     if (!signUpNo.trim() || !signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
@@ -239,10 +266,12 @@ export default function App() {
       setSignUpNo(''); setSignUpName(''); setSignUpId(''); setSignUpPw('');
       setTutorial({ show: true, role: 'student', step: 0 });
     } catch (error) {
-      alertMessage(error.code === 'auth/email-already-in-use' ? '이미 사용 중인 아이디입니다.' : '가입 실패: ' + error.message);
+      const err = /** @type {any} */ (error);
+      alertMessage(err.code === 'auth/email-already-in-use' ? '이미 사용 중인 아이디입니다.' : '가입 실패: ' + err.message);
     } finally { setIsLoading(false); }
   };
 
+  /** @param {React.FormEvent} e */
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
@@ -255,7 +284,7 @@ export default function App() {
         return;
       }
       
-      const userCredential = await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
+      await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
       const matchedUser = students.find(s => s.username === loginIdInput.trim());
       
       if (authModal.mode === 'student_login') {
@@ -267,7 +296,8 @@ export default function App() {
         else alertMessage(`안녕하세요, [${matchedUser.name}] 학생!`);
       }
     } catch (error) {
-      if(!error.message.includes('데모')) alertMessage('아이디 또는 비밀번호 오류입니다.');
+      const err = /** @type {any} */ (error);
+      if(!err.message.includes('데모')) alertMessage('아이디 또는 비밀번호 오류입니다.');
     } finally {
       setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); 
     }
@@ -293,8 +323,15 @@ export default function App() {
     setTutorial({ show: false, role: '', step: 0 });
   };
 
+  /**
+   * @param {number} rowId
+   * @param {string} field
+   * @param {string} value
+   */
   const handleDraftChange = (rowId, field, value) => setDraftStudents(draftStudents.map(row => row.rowId === rowId ? { ...row, [field]: value } : row));
   const handleAddDraftRow = () => setDraftStudents([...draftStudents, { rowId: Date.now(), no: '', name: '', username: '' }]);
+  
+  /** @param {number} rowId */
   const handleRemoveDraftRow = (rowId) => {
     if (draftStudents.length === 1) return alertMessage('최소 1줄은 필요합니다.');
     setDraftStudents(draftStudents.filter(row => row.rowId !== rowId));
@@ -321,25 +358,26 @@ export default function App() {
     setDraftStudents([{ rowId: 1, no: '', name: '', username: '' }, { rowId: 2, no: '', name: '', username: '' }]);
   };
 
+  /** @param {any} student */
   const handleResetPassword = (student) => {
     setConfirmModal({
       show: true, title: '비밀번호 강제 초기화', message: `[${student.name}] 비밀번호를 [1234]로 초기화합니다.`, isDanger: false,
       onConfirm: async () => {
         setIsLoading(true);
-        // Firebase Auth 비밀번호 변경은 Admin SDK 서버에서 해야 완벽하나 프로토타입에선 프론트 로직 생략
         alertMessage(`[${student.name}] 학생의 비밀번호가 '1234'로 초기화되었습니다. (UI 전용)`);
         setIsLoading(false); setConfirmModal({ show: false });
       }
     });
   };
 
+  /** @param {any} student */
   const handleDeleteStudent = (student) => {
     setConfirmModal({
       show: true, title: '학생 영구 제명', message: `[${student.name}] 학생 데이터를 삭제합니다.`, isDanger: true,
       onConfirm: async () => {
         setIsLoading(true);
         try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제되었습니다.'); } 
-        catch(err) { alertMessage('오류: ' + err.message); } 
+        catch(err) { const error = /** @type {any} */ (err); alertMessage('오류: ' + error.message); } 
         finally { setIsLoading(false); setConfirmModal({ show: false }); }
       }
     });
@@ -348,38 +386,42 @@ export default function App() {
   // ==============================================
   // 🔥 기출문제 & 풀이 (Cloudinary 업로드 연동)
   // ==============================================
+  /** @param {React.KeyboardEvent<HTMLInputElement>} e */
   const handleTagKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault(); const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
       if (val && !newQuestion.tags.includes(val)) setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
     }
   };
+  /** @param {string} tagToRemove */
   const removeTag = (tagToRemove) => setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
 
+  /** @param {React.ChangeEvent<HTMLInputElement>} e */
   const handleQuestionImageChange = (e) => {
-    const files = Array.from(e.target.files);
+    const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
   };
+  /** @param {React.DragEvent} e */
   const handleDropQuestion = (e) => {
     e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
     if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
   };
+  /** @param {number} index */
   const removeQuestionPreview = (index) => setNewQuestion(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index), imagePreviews: prev.imagePreviews.filter((_, i) => i !== index) }));
 
+  /** @param {React.FormEvent} e */
   const handleAddQuestion = async (e) => {
     e.preventDefault();
     if (!newQuestion.title.trim() || newQuestion.tags.length === 0 || newQuestion.images.length === 0) return alertMessage('타이틀, 해시태그, 이미지를 등록해주세요!');
 
     setIsLoading(true);
     try {
-      // ☁️ 1. Cloudinary 서버로 여러 장의 이미지 일괄 전송
       const uploadedImageUrls = [];
       for (const file of newQuestion.images) {
         const url = await uploadToCloudinary(file);
         uploadedImageUrls.push(url);
       }
 
-      // 2. Firestore DB 저장
       const questionData = {
         title: newQuestion.title, tags: newQuestion.tags, imageUrls: uploadedImageUrls,
         createdAt: new Date().toISOString(), teacherName: currentUser.name, teacherId: currentUser.id,
@@ -390,29 +432,31 @@ export default function App() {
       alertMessage('새로운 문제가 아카이브에 업로드되었습니다!');
       setNewQuestion({ title: '', tags: [], currentTagInput: '', images: [], imagePreviews: [], isPinned: false, isChallenge: false });
     } catch (err) {
-      alertMessage(err.message);
+      const error = /** @type {any} */ (err);
+      alertMessage(error.message);
     } finally { setIsLoading(false); }
   };
 
+  /** @param {string} id */
   const handleDeleteQuestionConfirm = (id) => {
     setConfirmModal({
       show: true, title: '기출문제 영구 삭제', message: '이 기출문제를 정말 삭제하시겠습니까?', isDanger: true,
       onConfirm: async () => {
         setIsLoading(true);
         try { await deleteDoc(doc(getColRef('questions'), id)); alertMessage('삭제되었습니다.'); } 
-        catch(err) { alertMessage('삭제 오류: ' + err.message); } 
+        catch(err) { const error = /** @type {any} */ (err); alertMessage('삭제 오류: ' + error.message); } 
         finally { setIsLoading(false); setConfirmModal({ show: false }); }
       }
     });
   };
 
+  /** @param {React.FormEvent} e */
   const handleSubmitSolution = async (e) => {
     e.preventDefault();
     if (!studentSolutionImage) return alertMessage('풀이 이미지를 첨부해주세요!');
     
     setIsLoading(true);
     try {
-      // ☁️ 1. Cloudinary 학생 풀이 업로드
       const downloadUrl = await uploadToCloudinary(studentSolutionImage);
 
       const newSubmission = {
@@ -425,31 +469,37 @@ export default function App() {
       
       alertMessage('풀이가 제출되었습니다!');
       setStudentSolutionImage(null); setStudentSolutionPreview(''); setSelectedQuestion(null);
-    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
+  /** @param {React.FormEvent} e */
   const handleSaveFeedbackSubmit = async (e) => {
     e.preventDefault();
     if (!feedbackInputText.trim() && !feedbackInputImage) return alertMessage('코멘트나 첨삭 이미지 중 하나는 필수입니다.');
     
     setIsLoading(true);
     try {
-      let finalFeedbackUrl = viewingSubmission.feedbackImageUrl;
-      // ☁️ 새로 올린 피드백 이미지가 있다면 Cloudinary에 업로드
+      let finalFeedbackUrl = viewingSubmission?.feedbackImageUrl || '';
       if (feedbackInputImage) {
         finalFeedbackUrl = await uploadToCloudinary(feedbackInputImage);
       }
 
-      await updateDoc(doc(getColRef('submissions'), activeFeedbackSubmissionId), {
-        status: '피드백 완료', feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: new Date().toISOString()
-      });
+      if (activeFeedbackSubmissionId) {
+        await updateDoc(doc(getColRef('submissions'), activeFeedbackSubmissionId), {
+          status: '피드백 완료', feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: new Date().toISOString()
+        });
+      }
 
       alertMessage('첨삭 피드백 전달 완료!');
       setViewingSubmission(null); setSelectedQuestion(null); setActiveFeedbackSubmissionId(null);
       setFeedbackInputText(''); setFeedbackInputImage(null); setFeedbackInputImagePreview('');
-    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
+  /**
+   * @param {React.FormEvent} e
+   * @param {string} targetSubId
+   */
   const handlePeerCommentSubmit = async (e, targetSubId) => {
     e.preventDefault();
     if (!peerCommentInput.trim()) return;
@@ -458,9 +508,9 @@ export default function App() {
     try {
       const targetSub = submissions.find(s => s.id === targetSubId);
       const newComment = { id: `c-${Date.now()}`, authorName: currentUser.name, text: peerCommentInput, createdAt: new Date().toISOString() };
-      await updateDoc(doc(getColRef('submissions'), targetSubId), { peerComments: [...(targetSub.peerComments || []), newComment] });
+      await updateDoc(doc(getColRef('submissions'), targetSubId), { peerComments: [...(targetSub?.peerComments || []), newComment] });
       setPeerCommentInput(''); alertMessage('피드백 댓글 등록 완료!');
-    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
   // 필터 로직
@@ -469,7 +519,7 @@ export default function App() {
     let matchQuery = true;
     if (query) {
       const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-      matchQuery = q.title.toLowerCase().includes(cleanQuery) || q.tags.some(tag => tag.toLowerCase().includes(cleanQuery)) || q.teacherName.toLowerCase().includes(cleanQuery);
+      matchQuery = q.title.toLowerCase().includes(cleanQuery) || q.tags.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery)) || q.teacherName.toLowerCase().includes(cleanQuery);
     }
     if (activeTab === 'my' && currentUser) {
       const solvedQuestionIds = submissions.filter(s => s.studentId === currentUser.id).map(s => s.questionId);
@@ -485,7 +535,7 @@ export default function App() {
     const query = teacherQuestionSearch.trim().toLowerCase();
     if (!query) return true;
     const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-    return q.title.toLowerCase().includes(cleanQuery) || q.tags.some(tag => tag.toLowerCase().includes(cleanQuery));
+    return q.title.toLowerCase().includes(cleanQuery) || q.tags.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery));
   });
 
   const filteredSubmissions = submissions.filter(sub => {
@@ -493,7 +543,7 @@ export default function App() {
     const query = submissionSearch.trim().toLowerCase();
     if (!query) return true;
     const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-    return (sub.studentName.toLowerCase().includes(cleanQuery) || relatedQ.tags?.some(tag => tag.toLowerCase().includes(cleanQuery)) || relatedQ.title?.toLowerCase().includes(cleanQuery) || sub.status.toLowerCase().includes(cleanQuery));
+    return (sub.studentName.toLowerCase().includes(cleanQuery) || relatedQ.tags?.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery)) || relatedQ.title?.toLowerCase().includes(cleanQuery) || sub.status.toLowerCase().includes(cleanQuery));
   });
 
   // ==============================================
@@ -515,20 +565,20 @@ export default function App() {
           <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 relative overflow-hidden">
             <div className="absolute top-0 w-full h-32 bg-gradient-to-b from-indigo-50 to-white -z-10"></div>
             <div className="flex gap-2 mb-6">
-              {TUTORIAL_STEPS[tutorial.role].map((_, idx) => (
+              {TUTORIAL_STEPS[/** @type {"teacher" | "student"} */ (tutorial.role)].map((_, idx) => (
                 <div key={idx} className={`w-2.5 h-2.5 rounded-full transition-all ${idx === tutorial.step ? 'bg-indigo-600 scale-125' : 'bg-slate-200'}`}></div>
               ))}
             </div>
             <div className="mb-8 min-h-[160px] flex flex-col justify-center w-full">
-              {TUTORIAL_STEPS[tutorial.role][tutorial.step].icon}
-              <h3 className="text-xl font-extrabold text-slate-900 mb-3">{TUTORIAL_STEPS[tutorial.role][tutorial.step].title}</h3>
-              <p className="text-sm text-slate-600 leading-relaxed font-semibold">{TUTORIAL_STEPS[tutorial.role][tutorial.step].desc}</p>
+              {TUTORIAL_STEPS[/** @type {"teacher" | "student"} */ (tutorial.role)][tutorial.step].icon}
+              <h3 className="text-xl font-extrabold text-slate-900 mb-3">{TUTORIAL_STEPS[/** @type {"teacher" | "student"} */ (tutorial.role)][tutorial.step].title}</h3>
+              <p className="text-sm text-slate-600 leading-relaxed font-semibold">{TUTORIAL_STEPS[/** @type {"teacher" | "student"} */ (tutorial.role)][tutorial.step].desc}</p>
             </div>
             <div className="flex items-center justify-between w-full border-t border-slate-100 pt-5 mt-auto">
               <button onClick={completeTutorial} className="text-slate-400 hover:text-slate-600 text-xs font-bold px-2 py-1">건너뛰기</button>
               <div className="flex gap-2">
                 {tutorial.step > 0 && <button onClick={() => setTutorial({ ...tutorial, step: tutorial.step - 1 })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1"><ArrowLeft size={14}/> 이전</button>}
-                {tutorial.step < TUTORIAL_STEPS[tutorial.role].length - 1 ? (
+                {tutorial.step < TUTORIAL_STEPS[/** @type {"teacher" | "student"} */ (tutorial.role)].length - 1 ? (
                   <button onClick={() => setTutorial({ ...tutorial, step: tutorial.step + 1 })} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1">다음 <ArrowRight size={14}/></button>
                 ) : (
                   <button onClick={completeTutorial} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1 animate-bounce"><CheckCircle size={14}/> 시작하기</button>
@@ -630,7 +680,7 @@ export default function App() {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (입력 후 Space/Enter)</label>
                       <div className="flex flex-wrap gap-2 p-2 border rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
-                        {newQuestion.tags.map(tag => (
+                        {newQuestion.tags.map((/** @type {string} */ tag) => (
                           <span key={tag} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">#{tag} <button type="button" onClick={()=>removeTag(tag)}>✕</button></span>
                         ))}
                         <input type="text" value={newQuestion.currentTagInput} onChange={e => setNewQuestion({...newQuestion, currentTagInput: e.target.value})} onKeyDown={handleTagKeyDown} className="flex-1 outline-none text-sm min-w-[100px]" placeholder="태그 추가..." />
@@ -906,7 +956,7 @@ export default function App() {
               <div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                   {selectedQuestion.isChallenge && <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1"><Trophy size={10}/> 공개 챌린지</span>}
-                  {selectedQuestion.tags.map((t, i) => <span key={i} className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">#{t}</span>)}
+                  {selectedQuestion.tags.map((/** @type {string} */ t, /** @type {number} */ i) => <span key={i} className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">#{t}</span>)}
                 </div>
                 <h3 className="font-extrabold text-xl text-slate-900">{selectedQuestion.title}</h3>
               </div>
@@ -919,7 +969,7 @@ export default function App() {
               <div className="md:w-1/2 flex flex-col border-r border-slate-200 bg-slate-50/50 p-6 overflow-y-auto">
                 <h4 className="text-xs font-extrabold text-slate-500 flex items-center gap-1 mb-3"><FileText size={14}/> 기출문제 세트</h4>
                 <div className="space-y-4 mb-6">
-                  {selectedQuestion.imageUrls.map((url, i) => (
+                  {selectedQuestion.imageUrls.map((/** @type {string} */ url, /** @type {number} */ i) => (
                     <img key={i} src={url} alt={`문제 ${i+1}`} className="w-full object-contain rounded-xl border shadow-sm cursor-zoom-in bg-white" onClick={()=>openLightbox(url, `${selectedQuestion.title} ${i+1}장`)} />
                   ))}
                 </div>
@@ -965,7 +1015,7 @@ export default function App() {
                             <label className="cursor-pointer block">
                               <Upload className="mx-auto text-slate-400 mb-1" size={20}/>
                               <span className="text-xs font-bold text-emerald-600">첨삭 이미지 업로드 (Ctrl+V)</span>
-                              <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){setFeedbackInputImage(f); setFeedbackInputImagePreview(URL.createObjectURL(f));}}} className="hidden"/>
+                              <input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setFeedbackInputImage(files[0]); setFeedbackInputImagePreview(URL.createObjectURL(files[0]));}}} className="hidden"/>
                             </label>
                           )}
                         </div>
@@ -981,7 +1031,7 @@ export default function App() {
                 (currentUser?.role === 'student' && submissions.some(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id)) ? (
                   <div className="flex flex-col h-full">
                     {(() => {
-                      const targetSub = viewingSubmission || submissions.filter(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id).pop();
+                      const targetSub = viewingSubmission || submissions.filter(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id).pop() || {};
                       const isMy = targetSub.studentId === currentUser.id;
                       const hasFeed = targetSub.status === '피드백 완료';
 
@@ -1014,9 +1064,9 @@ export default function App() {
                             <div className="flex-1 flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm mt-2">
                               <div className="bg-slate-100 p-2.5 text-xs font-extrabold text-slate-700 flex items-center gap-1"><MessageCircle size={14}/> 친구들의 의견</div>
                               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
-                                {targetSub.peerComments && targetSub.peerComments.length > 0 ? targetSub.peerComments.map(c => (
+                                {targetSub.peerComments && targetSub.peerComments.length > 0 ? targetSub.peerComments.map((/** @type {any} */ c) => (
                                   <div key={c.id} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-xs font-medium text-slate-700">
-                                    <div className="flex justify-between items-center mb-1"><span className="font-extrabold">{c.authorName}</span><span className="text-[9px] text-slate-400">{c.createdAt.split(' ')[1]}</span></div>
+                                    <div className="flex justify-between items-center mb-1"><span className="font-extrabold">{c.authorName}</span><span className="text-[9px] text-slate-400">{c.createdAt?.split(' ')?.[1] || ''}</span></div>
                                     <p>{c.text}</p>
                                   </div>
                                 )) : <p className="text-[10px] text-center text-slate-400 font-bold py-4">첫 번째 피드백을 남겨주세요!</p>}
@@ -1043,13 +1093,13 @@ export default function App() {
                     
                     <div className="border-2 border-dashed border-indigo-200 rounded-3xl p-6 text-center bg-indigo-50/30">
                       {studentSolutionPreview ? (
-                        <div className="relative"><img src={studentSolutionPreview} className="max-h-[200px] mx-auto rounded-xl border shadow-sm"/><button onClick={()=>{setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-3 -right-3 bg-red-500 text-white p-1.5 rounded-full shadow-lg"><X size={14}/></button></div>
+                        <div className="relative"><img src={studentSolutionPreview} alt="풀이 이미지" className="max-h-[200px] mx-auto rounded-xl border shadow-sm"/><button onClick={()=>{setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-3 -right-3 bg-red-500 text-white p-1.5 rounded-full shadow-lg"><X size={14}/></button></div>
                       ) : (
                         <label className="cursor-pointer block py-8">
                           <Upload className="mx-auto text-indigo-500 mb-3" size={32}/>
                           <span className="text-sm font-extrabold text-indigo-700 block">풀이 사진(캡처) 첨부하기</span>
                           <span className="text-[10px] text-slate-400 mt-1 block"><b>Ctrl+V</b> 붙여넣기 지원</span>
-                          <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){setStudentSolutionImage(f); setStudentSolutionPreview(URL.createObjectURL(f));}}} className="hidden"/>
+                          <input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setStudentSolutionImage(files[0]); setStudentSolutionPreview(URL.createObjectURL(files[0]));}}} className="hidden"/>
                         </label>
                       )}
                     </div>
@@ -1078,6 +1128,10 @@ export default function App() {
     </div>
   );
 
+  /**
+   * @param {any} q
+   * @param {boolean} isHighlight
+   */
   function renderQuestionCard(q, isHighlight) {
     const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
     return (
@@ -1105,7 +1159,7 @@ export default function App() {
           <div>
             <h4 className="font-extrabold text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{q.title}</h4>
             <div className="flex flex-wrap gap-1">
-              {q.tags.slice(0,3).map((tag, idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}
+              {q.tags.slice(0,3).map((/** @type {string} */ tag, /** @type {number} */ idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}
             </div>
           </div>
           <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
