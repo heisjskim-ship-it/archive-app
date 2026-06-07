@@ -177,6 +177,11 @@ export default function App() {
   /** @param {string} imageUrl @param {string} title */
   const openLightbox = (imageUrl, title) => setLightbox({ show: true, imageUrl, title });
 
+  // 💡 브라우저 탭 이름 변경
+  useEffect(() => {
+    document.title = "문제 풀이 아카이브";
+  }, []);
+
   // 🔥 Firebase 초기 인증
   useEffect(() => {
     const initAuth = async () => {
@@ -1048,6 +1053,10 @@ export default function App() {
 
                         return (
                           <>
+                            <button onClick={() => setViewingSubmission(null)} className="text-xs text-slate-500 hover:text-emerald-600 font-bold mb-3 flex items-center gap-1 w-fit transition-colors">
+                              <ArrowLeft size={14}/> 풀이 목록으로 돌아가기
+                            </button>
+                            
                             <div className="flex justify-between items-end mb-4">
                               <h4 className="font-extrabold text-emerald-600 flex items-center gap-1 text-sm"><CheckCircle size={16}/> {viewingSubmission.studentName} 학생 풀이 첨삭</h4>
                             </div>
@@ -1095,7 +1104,40 @@ export default function App() {
                       })()}
                     </div>
                   ) : (
-                    <div className="h-full flex flex-col justify-center text-center text-slate-400 font-semibold"><Users size={40} className="mx-auto mb-4 opacity-30"/>학생들의 제출물은 대시보드 메뉴에서 상세 확인하세요.</div>
+                    <div className="h-full flex flex-col">
+                      <h4 className="font-extrabold text-emerald-600 mb-4 flex items-center gap-1 text-sm"><Users size={16}/> 제출된 학생 풀이 목록</h4>
+                      {(() => {
+                        const qSubs = submissions.filter(s => s.questionId === selectedQuestion.id);
+                        if (qSubs.length === 0) return <div className="flex-1 flex flex-col justify-center items-center text-slate-400 font-semibold"><Users size={40} className="mb-4 opacity-30"/><p>아직 제출된 풀이가 없습니다.</p></div>;
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto pb-4">
+                            {qSubs.map(sub => {
+                              const attemptsCount = sub.attempts ? sub.attempts.length : 1;
+                              return (
+                                <div key={sub.id} onClick={() => { 
+                                  setViewingSubmission(sub); 
+                                  setActiveFeedbackSubmissionId(sub.id); 
+                                  const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl }]; 
+                                  const latestAtt = atts[atts.length - 1]; 
+                                  setFeedbackInputText(latestAtt.feedbackText||''); 
+                                  setFeedbackInputImagePreview(latestAtt.feedbackImageUrl||''); 
+                                  setSelectedAttemptIdx(atts.length - 1); 
+                                }} className="bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all group flex flex-col">
+                                  <div className="relative h-24 mb-2 rounded bg-white border border-slate-200 overflow-hidden shrink-0">
+                                    <img src={sub.imageUrl} alt="풀이" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                    <span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${sub.status==='피드백 완료'?'bg-emerald-500 text-white':'bg-amber-400 text-white'}`}>{sub.status}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center mt-auto">
+                                    <span className="font-bold text-sm text-slate-800 truncate">{sub.studentName}</span>
+                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">{attemptsCount}회</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+                    </div>
                   )
                 ) : 
                 
