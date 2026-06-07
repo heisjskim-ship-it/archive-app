@@ -1061,16 +1061,17 @@ export default function App() {
                               <h4 className="font-extrabold text-emerald-600 flex items-center gap-1 text-sm"><CheckCircle size={16}/> {viewingSubmission.studentName} 학생 풀이 첨삭</h4>
                             </div>
 
+                            {/* 💡 선생님 화면: 회차 버튼 크기 대폭 확대 및 UI 개선 */}
                             {attempts.length > 1 && (
-                              <div className="flex gap-2 overflow-x-auto pb-3 mb-3 border-b border-slate-100">
-                                <span className="text-xs font-bold text-slate-500 flex items-center shrink-0">풀이 회차:</span>
+                              <div className="flex gap-3 overflow-x-auto pb-4 mb-4 border-b border-slate-100 items-center">
+                                <span className="text-sm font-bold text-slate-500 flex items-center shrink-0">풀이 회차:</span>
                                 {attempts.map((/** @type {any} */ _, /** @type {number} */ idx) => (
                                   <button key={idx} onClick={() => { 
                                     setSelectedAttemptIdx(idx); 
                                     setFeedbackInputText(attempts[idx].feedbackText || ''); 
                                     setFeedbackInputImagePreview(attempts[idx].feedbackImageUrl || ''); 
                                     setFeedbackInputImage(null); 
-                                  }} className={`px-3 py-1 text-[10px] font-bold rounded-lg border whitespace-nowrap transition-colors ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                                  }} className={`px-4 py-2 text-xs font-bold rounded-xl border whitespace-nowrap transition-all shadow-sm ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600 scale-105' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-emerald-300'}`}>
                                     {idx + 1}회차 {idx === attempts.length - 1 && '(최신)'}
                                   </button>
                                 ))}
@@ -1160,11 +1161,12 @@ export default function App() {
                             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${hasFeed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
                           </div>
 
+                          {/* 💡 학생 화면: 이전 기록(회차) 버튼 크기 대폭 확대 및 UI 개선 */}
                           {attempts.length > 1 && (
-                            <div className="flex gap-2 overflow-x-auto pb-2 border-b border-slate-100 shrink-0">
-                              <span className="text-xs font-bold text-slate-500 flex items-center shrink-0">이전 기록:</span>
+                            <div className="flex gap-3 overflow-x-auto pb-4 mb-2 border-b border-slate-100 shrink-0 items-center">
+                              <span className="text-sm font-bold text-slate-500 flex items-center shrink-0">이전 기록:</span>
                               {attempts.map((/** @type {any} */ _, /** @type {number} */ idx) => (
-                                <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setIsEditingSolution(false); }} className={`px-3 py-1 text-[10px] font-bold rounded-lg border whitespace-nowrap transition-colors ${currentIdx === idx ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                                <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setIsEditingSolution(false); }} className={`px-4 py-2 text-xs font-bold rounded-xl border whitespace-nowrap transition-all shadow-sm ${currentIdx === idx ? 'bg-indigo-600 text-white border-indigo-600 scale-105' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-indigo-300'}`}>
                                   {idx + 1}회차 {idx === attempts.length - 1 && '(최신)'}
                                 </button>
                               ))}
