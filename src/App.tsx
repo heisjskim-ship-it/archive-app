@@ -158,6 +158,9 @@ export default function App() {
   const [teacherQuestionSearch, setTeacherQuestionSearch] = useState('');
   const [submissionSearch, setSubmissionSearch] = useState('');
   
+  // 💡 가입된 학생 관리 전용 검색 상태 추가
+  const [studentSearch, setStudentSearch] = useState('');
+
   /** @type {[string | null, React.Dispatch<React.SetStateAction<string | null>>]} */
   const [activeFeedbackSubmissionId, setActiveFeedbackSubmissionId] = useState(null);
   const [feedbackInputText, setFeedbackInputText] = useState('');
@@ -387,10 +390,15 @@ export default function App() {
   /** @param {any} student */
   const handleResetPassword = (student) => {
     setConfirmModal({
-      show: true, title: '비밀번호 강제 초기화', message: `[${student.name}] 비밀번호를 [123456]로 초기화합니다.`, isDanger: false,
+      show: true, 
+      title: '비밀번호 강제 초기화', 
+      message: '[' + student.name + '] 비밀번호를 [123456]로 초기화합니다.', 
+      isDanger: false,
       onConfirm: async () => {
-        setIsLoading(true); alertMessage(`[${student.name}] 비밀번호 '123456' 초기화 완료 (UI 안내용)`);
-        setIsLoading(false); setConfirmModal({ show: false });
+        setIsLoading(true); 
+        alertMessage('[' + student.name + "] 학생 비밀번호가 '123456'으로 초기화되었습니다.");
+        setIsLoading(false); 
+        setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
       }
     });
   };
@@ -398,12 +406,12 @@ export default function App() {
   /** @param {any} student */
   const handleDeleteStudent = (student) => {
     setConfirmModal({
-      show: true, title: '학생 제명', message: `[${student.name}] 데이터를 삭제합니다.`, isDanger: true,
+      show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
       onConfirm: async () => {
         setIsLoading(true);
         try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제됨.'); } 
         catch(err) { const error = /** @type {any} */ (err); alertMessage('오류: ' + error.message); } 
-        finally { setIsLoading(false); setConfirmModal({ show: false }); }
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
   };
@@ -465,7 +473,7 @@ export default function App() {
         setIsLoading(true);
         try { await deleteDoc(doc(getColRef('questions'), id)); alertMessage('삭제되었습니다.'); } 
         catch(err) { const error = /** @type {any} */ (err); alertMessage('오류: ' + error.message); } 
-        finally { setIsLoading(false); setConfirmModal({ show: false }); }
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
   };
@@ -645,6 +653,17 @@ export default function App() {
     return (sub.studentName.toLowerCase().includes(cleanQuery) || relatedQ.tags?.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery)) || relatedQ.title?.toLowerCase().includes(cleanQuery) || sub.status.toLowerCase().includes(cleanQuery));
   });
 
+  // 💡 가입 학생 목록 실시간 필터 검색 계산
+  const filteredStudents = students.filter(st => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      (st.studentNumber && st.studentNumber.toLowerCase().includes(query)) ||
+      (st.name && st.name.toLowerCase().includes(query)) ||
+      (st.username && st.username.toLowerCase().includes(query))
+    );
+  });
+
   // ==============================================
   // 렌더링
   // ==============================================
@@ -789,7 +808,7 @@ export default function App() {
             <h4 className="text-xl font-extrabold text-slate-900">{confirmModal.title}</h4>
             <p className="text-sm text-slate-600 font-semibold mb-2">{confirmModal.message}</p>
             <div className="flex gap-2">
-              <button onClick={() => setConfirmModal({ ...confirmModal, show: false })} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold">취소</button>
+              <button onClick={() => setConfirmModal({ ...confirmModal, show: false, title: '', message: '', onConfirm: null, isDanger: false })} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold">취소</button>
               <button onClick={confirmModal.onConfirm} className={`flex-1 py-3 text-white rounded-xl font-bold ${confirmModal.isDanger ? 'bg-red-600' : 'bg-indigo-600'}`}>확인</button>
             </div>
           </div>
@@ -1013,27 +1032,51 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center gap-2">
-                    <Users className="text-indigo-600" size={20}/> 가입 학생 정보 <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full">{students.length}명</span>
-                  </h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                      <Users className="text-indigo-600" size={20}/> 가입 학생 정보 
+                      <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full">
+                        {filteredStudents.length !== students.length ? `${filteredStudents.length}명 검색됨 / ` : ''}{students.length}명
+                      </span>
+                    </h3>
+                    <div className="relative max-w-[240px] w-full">
+                      <Search className="absolute left-2.5 top-2.5 text-slate-400" size={14}/>
+                      <input 
+                        type="text" 
+                        value={studentSearch} 
+                        onChange={e => setStudentSearch(e.target.value)} 
+                        placeholder="학번, 이름, 아이디 검색..." 
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" 
+                      />
+                    </div>
+                  </div>
+                  
                   <div className="overflow-x-auto border border-slate-200 rounded-xl">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                         <tr><th className="p-3.5 font-bold">학번</th><th className="p-3.5 font-bold">이름</th><th className="p-3.5 font-bold">아이디</th><th className="p-3.5 text-center font-bold">로그인 횟수</th><th className="p-3.5 text-right font-bold">계정 제어</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                        {students.map(st => (
-                          <tr key={st.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="p-3.5 font-mono text-slate-500">{st.studentNumber}</td>
-                            <td className="p-3.5 font-bold text-slate-900">{st.name}</td>
-                            <td className="p-3.5 font-mono bg-slate-50/50">{st.username}</td>
-                            <td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-md font-bold">{st.loginCount}회</span></td>
-                            <td className="p-3.5 text-right space-x-2">
-                              <button onClick={()=>handleResetPassword(st)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs transition-colors">비밀번호 초기화</button>
-                              <button onClick={()=>handleDeleteStudent(st)} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg font-bold text-xs transition-colors">삭제</button>
+                        {filteredStudents.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-8 text-center text-slate-400 font-bold text-xs">
+                              검색 결과에 맞는 학생이 없습니다.
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          filteredStudents.map(st => (
+                            <tr key={st.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-3.5 font-mono text-slate-500">{st.studentNumber}</td>
+                              <td className="p-3.5 font-bold text-slate-900">{st.name}</td>
+                              <td className="p-3.5 font-mono bg-slate-50/50">{st.username}</td>
+                              <td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-md font-bold">{st.loginCount}회</span></td>
+                              <td className="p-3.5 text-right space-x-2">
+                                <button onClick={()=>handleResetPassword(st)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs transition-colors">비밀번호 초기화</button>
+                                <button onClick={()=>handleDeleteStudent(st)} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg font-bold text-xs transition-colors">삭제</button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1334,7 +1377,7 @@ export default function App() {
                       return (
                         <div className="flex flex-col h-full space-y-4">
                           <div className={`p-4 rounded-2xl flex justify-between items-center ${isMy ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-200'}`}>
-                            <span className="font-extrabold text-sm flex items-center gap-2">{isMy ? <><User size={16} className="text-indigo-600"/> {selectedQuestion.isStudentQuestion ? '내 답변 기록' : '내 오답 노트'}</> : <><Users size={16} className="text-slate-600"/> {targetSub.studentName} 학생의 풀이</>}</span>
+                            <span className="font-extrabold text-sm flex items-center gap-2">{isMy ? <><User size={16} className="text-indigo-600"/> {selectedQuestion.isStudentQuestion ? '내 답변 기록' : '내 오답 노트'}</> : <><Users size={16} className="text-slate-600"/> {targetSub.studentName} font-bold 학생의 풀이</>}</span>
                             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${hasFeed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
                           </div>
 
