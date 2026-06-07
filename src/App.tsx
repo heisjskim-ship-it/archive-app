@@ -46,7 +46,7 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================
-// 🔥 Firebase 및 Cloudinary 고정 설정값 (환경변수 대체)
+// 🔥 Firebase 및 Cloudinary 고정 설정값
 // ==============================================
 const firebaseConfig = {
   apiKey: "AIzaSyCFai50jHiNpwyZl9c16MsetXzIbWRp7x8",
@@ -165,7 +165,6 @@ export default function App() {
   const [feedbackInputImage, setFeedbackInputImage] = useState(null);
   const [feedbackInputImagePreview, setFeedbackInputImagePreview] = useState('');
 
-  // 💡 학생이 스스로 질문을 올리기 위한 모달 및 입력 상태
   const [studentQuestionModal, setStudentQuestionModal] = useState(false);
   const [studentNewQuestion, setStudentNewQuestion] = useState({ title: '', images: [], imagePreviews: [], isShared: true });
 
@@ -184,7 +183,6 @@ export default function App() {
   const [viewingSubmission, setViewingSubmission] = useState(null); 
   const [peerCommentInput, setPeerCommentInput] = useState('');
   
-  // 💡 댓글(피드백)에 이미지를 첨부하기 위한 상태 추가
   /** @type {[File | null, React.Dispatch<React.SetStateAction<File | null>>]} */
   const [peerCommentImage, setPeerCommentImage] = useState(null);
   const [peerCommentImagePreview, setPeerCommentImagePreview] = useState('');
@@ -472,7 +470,6 @@ export default function App() {
     });
   };
 
-  // 💡 학생 자발적 질문 등록 함수
   /** @param {React.FormEvent} e */
   const handleStudentAddQuestion = async (e) => {
     e.preventDefault();
@@ -592,10 +589,9 @@ export default function App() {
   /** @param {React.FormEvent} e @param {string} targetSubId */
   const handlePeerCommentSubmit = async (e, targetSubId) => {
     e.preventDefault();
-    if (!peerCommentInput.trim() && !peerCommentImage) return; // 💡 이미지 첨부만 있어도 통과되도록 조건 변경
+    if (!peerCommentInput.trim() && !peerCommentImage) return; 
     setIsLoading(true);
     try {
-      // 💡 댓글에 첨부된 이미지가 있다면 업로드 처리
       let imgUrl = '';
       if (peerCommentImage) {
         imgUrl = await uploadToCloudinary(peerCommentImage);
@@ -606,7 +602,7 @@ export default function App() {
         id: `c-${Date.now()}`, 
         authorName: currentUser.name, 
         text: peerCommentInput, 
-        imageUrl: imgUrl, // 💡 이미지 URL 함께 저장
+        imageUrl: imgUrl, 
         createdAt: new Date().toISOString() 
       };
       await updateDoc(doc(getColRef('submissions'), targetSubId), { peerComments: [...(targetSub?.peerComments || []), newComment] });
@@ -655,6 +651,35 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative">
       
+      {/* 💡 전역 커스텀 스크롤바 스타일시트 주입 */}
+      <style>{`
+        /* 스크롤바 전체 너비/높이 설정 */
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        /* 스크롤바 뒷배경을 투명하게 해서 검은 배경 제거 */
+        ::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        /* 스크롤바 조절 손잡이 디자인 (기본 상태는 연한 둥근 회색) */
+        ::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1; /* slate-300 */
+          border-radius: 9999px;
+          border: 2px solid transparent; /* 패딩 효과 */
+          background-clip: padding-box;
+        }
+        /* 마우스 오버 시 시각적으로 인지하기 쉽게 좀 더 짙어짐 */
+        ::-webkit-scrollbar-thumb:hover {
+          background-color: #94a3b8; /* slate-400 */
+        }
+        /* 파이어폭스 환경 대응 */
+        * {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+      `}</style>
+
       {isLoading && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-center z-[200]">
           <Loader2 className="text-white animate-spin mb-3" size={48} />
@@ -662,7 +687,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 💡 학생용 모르는 문제 질문하기 모달 */}
       {studentQuestionModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95">
@@ -1068,7 +1092,6 @@ export default function App() {
                 </div>
               )}
               <div>
-                {/* 💡 학생 홈 화면 질문하기 버튼 영역 */}
                 <div className="flex justify-between items-center mb-4 pl-2">
                   <h3 className="font-extrabold text-lg flex items-center gap-2"><BookOpen className="text-indigo-600" size={20}/> 아카이브 전체 문제</h3>
                   {currentUser?.role === 'student' && (
@@ -1311,7 +1334,6 @@ export default function App() {
                       return (
                         <div className="flex flex-col h-full space-y-4">
                           <div className={`p-4 rounded-2xl flex justify-between items-center ${isMy ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-200'}`}>
-                            {/* 💡 질문에 대한 답변 기록이므로 제목도 상황에 맞게 렌더링 */}
                             <span className="font-extrabold text-sm flex items-center gap-2">{isMy ? <><User size={16} className="text-indigo-600"/> {selectedQuestion.isStudentQuestion ? '내 답변 기록' : '내 오답 노트'}</> : <><Users size={16} className="text-slate-600"/> {targetSub.studentName} 학생의 풀이</>}</span>
                             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${hasFeed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
                           </div>
@@ -1401,14 +1423,12 @@ export default function App() {
                                       <span className="font-extrabold">{c.authorName}</span>
                                       <span className="text-[9px] text-slate-400 font-mono">{formatDateTime(c.createdAt)}</span>
                                     </div>
-                                    {/* 💡 피드백에 이미지가 첨부되었다면 보여주기 */}
                                     {c.imageUrl && <img src={c.imageUrl} alt="첨부" className="my-2 rounded border max-h-32 cursor-zoom-in" onClick={()=>openLightbox(c.imageUrl, '첨부 이미지')} />}
                                     <p>{c.text}</p>
                                   </div>
                                 )) : <p className="text-[10px] text-center text-slate-400 font-bold py-4">첫 번째 피드백을 남겨주세요!</p>}
                               </div>
                               
-                              {/* 💡 댓글 입력 폼에 이미지 첨부 기능 추가 */}
                               <form onSubmit={(e)=>handlePeerCommentSubmit(e, targetSub.id)} className="p-2 border-t flex flex-col gap-2">
                                 {peerCommentImagePreview && (
                                   <div className="relative w-fit">
@@ -1440,7 +1460,6 @@ export default function App() {
                 (currentUser?.role === 'student') && (
                   <div className="flex flex-col justify-center h-full space-y-6">
                     <div className="text-center">
-                      {/* 💡 질문에 답변하는지, 문제 풀이를 올리는지에 따라 텍스트 동적 분기 */}
                       <h4 className="font-extrabold text-lg text-slate-900">{selectedQuestion.isStudentQuestion ? '이 질문에 답변해 줄 수 있나요?' : '도전할 준비가 되었나요?'}</h4>
                       <p className="text-xs text-slate-500 mt-1">{selectedQuestion.isStudentQuestion ? '답변 과정을 사진으로 찍어 업로드해주세요.' : '풀이 과정을 사진으로 찍어 업로드해주세요.'}</p>
                     </div>
@@ -1514,7 +1533,6 @@ export default function App() {
           <div className="absolute top-3 left-3 flex flex-wrap gap-1 z-10 max-w-[80%]">
             {q.isPinned && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Pin size={10}/>공지</span>}
             {q.isChallenge && !q.tags.includes('질문있어요') && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Trophy size={10}/>챌린지</span>}
-            {/* 💡 질문일 경우 노란색 뱃지 표시 */}
             {q.tags.includes('질문있어요') && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><MessageCircle size={10}/>질문</span>}
             {q.imageUrls.length > 1 && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">+{q.imageUrls.length - 1}장</span>}
           </div>
@@ -1528,7 +1546,6 @@ export default function App() {
             </div>
           </div>
           <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-            {/* 💡 학생이 올린 질문이면 (학생) 표시 */}
             <span className="text-[10px] font-semibold text-slate-400">{q.teacherName} {q.isStudentQuestion ? '학생' : '선생님'}</span>
             <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500" />
           </div>
