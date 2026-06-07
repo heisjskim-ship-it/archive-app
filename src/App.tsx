@@ -29,7 +29,7 @@ const Trophy = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/
 const MessageCircle = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.5 0 0 1 8 8v.5z" /></svg>;
 const ImageIcon = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>;
 const X = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
-const ArrowRight = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>;
+const ArrowRight = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" py="12" /><polyline points="12 5 19 12 12 19" /></svg>;
 const ArrowLeft = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
 const Loader2 = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>;
 
@@ -42,7 +42,7 @@ import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut 
 } from 'firebase/auth';
 import { 
-  getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc
+  getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc, getDoc
 } from 'firebase/firestore';
 
 // ==============================================
@@ -147,6 +147,9 @@ export default function App() {
   /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [submissions, setSubmissions] = useState([]);
 
+  // 💡 가입 승인 대기방을 위한 전체 사용자 리스트 상태
+  const [allUsers, setAllUsers] = useState([]);
+
   const [teacherSubTab, setTeacherSubTab] = useState('content');
   const [draftStudents, setDraftStudents] = useState([
     { rowId: 1, no: '', name: '', username: '' },
@@ -217,7 +220,29 @@ export default function App() {
       }
     };
     initAuth();
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => setFirebaseUser(user));
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      if (user && !user.isAnonymous) {
+        try {
+          const userDocRef = doc(getColRef('users'), user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.role === 'pending_teacher') {
+              await signOut(auth);
+              setCurrentUser(null);
+            } else {
+              setCurrentUser({ id: user.uid, ...userData });
+            }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        // 최고 관리자 계정 상태 보존
+        setCurrentUser(prev => (prev?.id === 'teacher_admin' ? prev : null));
+      }
+    });
     return () => unsubscribeAuth();
   }, []);
 
@@ -237,6 +262,7 @@ export default function App() {
     });
     const unsubStudents = onSnapshot(getColRef('users'), (snapshot) => {
       const uList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAllUsers(uList);
       setStudents(uList.filter(u => u.role === 'student'));
       setIsLoading(false);
     }, (err) => { console.error(err); setIsLoading(false); });
@@ -314,30 +340,96 @@ export default function App() {
     finally { setIsLoading(false); }
   };
 
+  // 💡 신규 교사 권한 승인 신청 처리 함수
+  /** @param {React.FormEvent} e */
+  const handleTeacherSignUp = async (e) => {
+    e.preventDefault();
+    if (!signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
+    if (signUpPw.trim().length < 6) return alertMessage('보안을 위해 비밀번호는 최소 6자 이상으로 설정해 주세요! 🔐');
+
+    setIsLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, generateEmail(signUpId.trim()), signUpPw.trim());
+      const newTeacherData = {
+        role: 'pending_teacher', 
+        name: signUpName.trim(), 
+        username: signUpId.trim(),
+        joinDate: new Date().toISOString().split('T')[0], 
+        loginCount: 0, 
+        status: '승인대기'
+      };
+      await setDoc(doc(getColRef('users'), userCredential.user.uid), newTeacherData);
+      alertMessage('교사 승인 신청이 접수되었습니다! 최고 관리자(admin)의 승인 후 정식 로그인이 가능합니다. ✏️');
+      setAuthModal({ show: true, mode: 'student_login' });
+      setSignUpName(''); setSignUpId(''); setSignUpPw('');
+    } catch (error) { 
+      const err = /** @type {any} */ (error); 
+      alertMessage(err.code === 'auth/email-already-in-use' ? '이미 가입 신청된 교사 아이디입니다.' : '신청 실패: ' + err.message); 
+    } finally { 
+      setIsLoading(false); 
+    }
+  };
+
   /** @param {React.FormEvent} e */
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
     setIsLoading(true);
     try {
+      // 💡 1. 최고 관리자 계정 하드코딩 우회 로그인
       if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
-        setCurrentUser({ id: 'teacher_admin', name: '관리자', role: 'teacher' });
-        setAuthModal({ show: false, mode: 'student_login' }); alertMessage('선생님, 반갑습니다! 관리자 모드로 진입합니다.'); return;
+        setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher' });
+        setAuthModal({ show: false, mode: 'student_login' }); 
+        alertMessage('최고 관리자 모드로 로그인했습니다. 교사 임용 및 회원 관리가 가능합니다. 👑'); 
+        return;
       }
       
-      await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
-      const matchedUser = students.find(s => s.username === loginIdInput.trim());
+      // 💡 2. 일반 학생 / 일반 교사 통합 로그인 처리
+      const userCredential = await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
+      const userDocRef = doc(getColRef('users'), userCredential.user.uid);
+      const userDoc = await getDoc(userDocRef);
       
-      if (authModal.mode === 'student_login') {
-        if (!matchedUser) throw new Error("DB에 정보가 없습니다.");
-        await updateDoc(doc(getColRef('users'), matchedUser.id), { loginCount: matchedUser.loginCount + 1 });
-        setCurrentUser({ id: matchedUser.id, ...matchedUser });
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // 💡 교사 임용 승인 여부 검증
+        if (userData.role === 'pending_teacher') {
+          await signOut(auth);
+          throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 교사 계정입니다. 조금만 기다려주세요!');
+        }
+        
+        // 💡 로그인 화면 모드에 따른 권한 검증
+        if (authModal.mode === 'teacher_login' && userData.role !== 'teacher') {
+          await signOut(auth);
+          throw new Error('교사 권한이 없는 계정입니다. 학생 로그인을 이용해 주세요.');
+        }
+        if (authModal.mode === 'student_login' && userData.role !== 'student') {
+          await signOut(auth);
+          throw new Error('학생 권한이 없는 계정입니다. 교사 로그인을 이용해 주세요.');
+        }
+
+        // 로그인 횟수 증가
+        await updateDoc(userDocRef, { loginCount: (userData.loginCount || 0) + 1 });
+        
+        setCurrentUser({ id: userCredential.user.uid, ...userData, loginCount: (userData.loginCount || 0) + 1 });
         setAuthModal({ show: false, mode: 'student_login' });
-        if (!matchedUser.hasSeenTutorial) setTutorial({ show: true, role: 'student', step: 0 });
-        else alertMessage(`안녕하세요, [${matchedUser.name}] 학생!`);
+        
+        if (userData.role === 'student' && !userData.hasSeenTutorial) {
+          setTutorial({ show: true, role: 'student', step: 0 });
+        } else {
+          alertMessage('반가워요, ' + userData.name + (userData.role === 'teacher' ? ' 선생님!' : ' 학생!'));
+        }
+      } else {
+        throw new Error('데이터베이스에 등록된 회원 프로필이 존재하지 않습니다.');
       }
-    } catch (error) { const err = /** @type {any} */ (error); if(!err.message.includes('관리자')) alertMessage('아이디 또는 비밀번호 오류입니다.'); } 
-    finally { setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); }
+    } catch (error) { 
+      const err = /** @type {any} */ (error); 
+      alertMessage(err.message || '아이디 또는 비밀번호 오류입니다.'); 
+    } finally { 
+      setIsLoading(false); 
+      setLoginIdInput(''); 
+      setLoginPwInput(''); 
+    }
   };
 
   const handleLogout = async () => {
@@ -352,7 +444,7 @@ export default function App() {
   const completeTutorial = async () => {
     if (tutorial.role === 'student' && currentUser && currentUser.id !== 'teacher_admin') {
       await updateDoc(doc(getColRef('users'), currentUser.id), { hasSeenTutorial: true });
-      alertMessage(`튜토리얼을 마쳤습니다. 자유롭게 학습하세요!`);
+      alertMessage('튜토리얼을 마쳤습니다. 자유롭게 학습하세요!');
     } else { alertMessage('튜토리얼 완료!'); }
     setTutorial({ show: false, role: '', step: 0 });
   };
@@ -383,35 +475,46 @@ export default function App() {
       } catch (err) { console.error("다중 등록 에러", err); }
     }
     setIsLoading(false);
-    alertMessage(`총 ${successCount}명 등록 완료 (초기비번 123456)`);
+    alertMessage('총 ' + successCount + '명 등록 완료 (초기비번 123456)');
     setDraftStudents([{ rowId: 1, no: '', name: '', username: '' }, { rowId: 2, no: '', name: '', username: '' }]);
   };
 
-  /** @param {any} student */
-  const handleResetPassword = (student) => {
-    setConfirmModal({
-      show: true, 
-      title: '비밀번호 강제 초기화', 
-      message: '[' + student.name + '] 비밀번호를 [123456]로 초기화합니다.', 
-      isDanger: false,
-      onConfirm: async () => {
-        setIsLoading(true); 
-        alertMessage('[' + student.name + "] 학생 비밀번호가 '123456'으로 초기화되었습니다.");
-        setIsLoading(false); 
-        setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
-      }
-    });
+  // 💡 최고 관리자의 임용 대기 교사 승인 처리 함수
+  const handleApproveTeacher = async (teacher) => {
+    setIsLoading(true);
+    try {
+      await updateDoc(doc(getColRef('users'), teacher.id), {
+        role: 'teacher',
+        status: '활동중'
+      });
+      alertMessage('[' + teacher.name + '] 선생님의 임용 승인이 정상 완료되었습니다! 이제 정식 로그인이 가능합니다. 🎉');
+    } catch (err) {
+      const error = /** @type {any} */ (err);
+      alertMessage('승인 오류: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  /** @param {any} student */
-  const handleDeleteStudent = (student) => {
+  // 💡 최고 관리자의 교사 직권 해제 및 거절 처리 함수
+  const handleRejectTeacher = async (teacher) => {
     setConfirmModal({
-      show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
+      show: true,
+      title: '교사 권한 철회 및 삭제',
+      message: '[' + teacher.name + '] 계정 권한을 철회하거나 가입 신청을 거절하시겠습니까?',
+      isDanger: true,
       onConfirm: async () => {
         setIsLoading(true);
-        try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제됨.'); } 
-        catch(err) { const error = /** @type {any} */ (err); alertMessage('오류: ' + error.message); } 
-        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
+        try {
+          await deleteDoc(doc(getColRef('users'), teacher.id));
+          alertMessage('정상적으로 삭제/거절 처리되었습니다.');
+        } catch (err) {
+          const error = /** @type {any} */ (err);
+          alertMessage('오류: ' + error.message);
+        } finally {
+          setIsLoading(false);
+          setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
+        }
       }
     });
   };
@@ -664,6 +767,11 @@ export default function App() {
     );
   });
 
+  // 💡 대기 중인 교사 목록 계산 (관리자 권한용)
+  const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
+  // 💡 이미 승인 완료된 교사 목록 계산
+  const approvedTeachers = allUsers.filter(u => u.role === 'teacher' && u.id !== 'teacher_admin');
+
   // ==============================================
   // 렌더링
   // ==============================================
@@ -838,7 +946,7 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
                   <span className={`w-2.5 h-2.5 rounded-full ${currentUser.role === 'teacher' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></span>
-                  <span className="text-xs font-bold text-slate-700">{currentUser.name} {currentUser.role === 'teacher' ? '선생님' : '학생'}</span>
+                  <span className="text-xs font-bold text-slate-700">{currentUser.name} {currentUser.id === 'teacher_admin' ? '최고 관리자' : currentUser.role === 'teacher' ? '선생님' : '학생'}</span>
                 </div>
                 <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 flex items-center gap-1 text-xs font-bold"><LogOut size={14} /> 로그아웃</button>
               </div>
@@ -1081,6 +1189,87 @@ export default function App() {
                     </table>
                   </div>
                 </div>
+
+                {/* 💡 최고 관리자 전용: 교사 가입 승인 대기방 영역 탑재 */}
+                {currentUser?.id === 'teacher_admin' && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-6 animate-fade-in">
+                    <div className="border-b pb-3 mb-4 flex justify-between items-center">
+                      <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                        <Sparkles className="text-amber-500" size={20}/> 🧑‍🏫 교사 권한 관리 및 승인 대기방
+                      </h3>
+                      <span className="bg-amber-100 text-amber-800 text-xs px-3 py-1 rounded-full font-bold">
+                        승인 대기: {pendingTeachers.length}명
+                      </span>
+                    </div>
+
+                    {/* 승인대기 교사 섹션 */}
+                    <div className="mb-6">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">신규 가입 신청 명단</h4>
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-amber-50 border-b border-slate-200 text-amber-900">
+                            <tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">신청 아이디</th><th className="p-3 font-bold">신청 일자</th><th className="p-3 font-bold">상태</th><th className="p-3 text-right font-bold">권한 승인</th></tr>
+                          </thead>
+                          <tbody className="divide-y bg-white text-slate-700">
+                            {pendingTeachers.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">
+                                  가입 신청 대기 중인 교사 계정이 없습니다.
+                                </td>
+                              </tr>
+                            ) : (
+                              pendingTeachers.map(pt => (
+                                <tr key={pt.id} className="hover:bg-amber-50/30 transition-colors">
+                                  <td className="p-3 font-bold text-slate-900">{pt.name}</td>
+                                  <td className="p-3 font-mono">{pt.username}</td>
+                                  <td className="p-3 text-slate-500 text-xs">{pt.joinDate}</td>
+                                  <td className="p-3"><span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{pt.status}</span></td>
+                                  <td className="p-3 text-right space-x-2">
+                                    <button onClick={() => handleApproveTeacher(pt)} className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition-colors">임용 승인</button>
+                                    <button onClick={() => handleRejectTeacher(pt)} className="px-3.5 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg font-bold text-xs transition-colors">반려 및 삭제</button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* 임용 완료 교사 섹션 */}
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">정식 임용 교사 명단</h4>
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                            <tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">아이디</th><th className="p-3 font-bold">임용 일자</th><th className="p-3 text-center font-bold">로그인 횟수</th><th className="p-3 text-right font-bold">직권 해제</th></tr>
+                          </thead>
+                          <tbody className="divide-y bg-white text-slate-700">
+                            {approvedTeachers.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">
+                                  임용 완료된 교사 계정이 아직 없습니다.
+                                </td>
+                              </tr>
+                            ) : (
+                              approvedTeachers.map(at => (
+                                <tr key={at.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="p-3 font-bold text-slate-900">{at.name} 선생님</td>
+                                  <td className="p-3 font-mono">{at.username}</td>
+                                  <td className="p-3 text-slate-500 text-xs">{at.joinDate}</td>
+                                  <td className="p-3 text-center"><span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-bold">{at.loginCount}회</span></td>
+                                  <td className="p-3 text-right">
+                                    <button onClick={() => handleRejectTeacher(at)} className="px-3.5 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg font-bold text-xs transition-colors">해임 및 삭제</button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1162,7 +1351,7 @@ export default function App() {
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-5 border-b pb-3">
               <h3 className="font-extrabold text-lg text-slate-900">
-                {authModal.mode === 'student_register' ? '🚀 신규 학생 가입' : authModal.mode === 'teacher_login' ? '🧑‍🏫 교사 로그인' : '✏️ 학생 로그인'}
+                {authModal.mode === 'student_register' ? '🚀 신규 학생 가입' : authModal.mode === 'teacher_register' ? '🧑‍🏫 교사 승인 신청' : authModal.mode === 'teacher_login' ? '🧑‍🏫 교사 로그인' : '✏️ 학생 로그인'}
               </h3>
               <button onClick={() => setAuthModal({ show: false, mode: 'student_login' })} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
             </div>
@@ -1182,12 +1371,29 @@ export default function App() {
                 <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl mt-4 transition-all">가입 완료 및 접속</button>
                 <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_login'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">이미 계정이 있습니다</button>
               </form>
+            ) : authModal.mode === 'teacher_register' ? (
+              // 💡 교사 회원가입 신청 전용 폼 설계
+              <form onSubmit={handleTeacherSignUp} className="space-y-3">
+                <div><label className="text-xs font-bold text-slate-500">교사 실명 (이름)</label><input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="예: 홍길동" required/></div>
+                <div><label className="text-xs font-bold text-slate-500">교사용 로그인 아이디 (ID)</label><input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="예: math_teacher" required/></div>
+                <div>
+                  <label className="flex justify-between items-center text-xs font-bold text-slate-500 mb-1">
+                    <span>로그인 비밀번호</span>
+                    <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">최소 6자 이상</span>
+                  </label>
+                  <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none" required/>
+                </div>
+                <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-750 text-white font-bold rounded-xl mt-4 transition-all shadow-md">교사 가입 권한 신청하기</button>
+                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_login'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">기존 교사 로그인으로 돌아가기</button>
+              </form>
             ) : (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div><label className="text-xs font-bold text-slate-500">아이디 (ID)</label><input type="text" value={loginIdInput} onChange={e=>setLoginIdInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" required/></div>
                 <div><label className="text-xs font-bold text-slate-500">비밀번호</label><input type="password" value={loginPwInput} onChange={e=>setLoginPwInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" required/></div>
                 <button type="submit" className={`w-full py-3 text-white font-bold rounded-xl transition-all ${authModal.mode === 'teacher_login' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>로그인</button>
                 {authModal.mode === 'student_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_register'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">아직 회원이 아니신가요?</button>}
+                {/* 💡 교사 로그인 탭에서 가입 신청 버튼 표출 */}
+                {authModal.mode === 'teacher_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_register'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">아직 교사 등록이 안되어 있으신가요? (권한 신청)</button>}
               </form>
             )}
           </div>
