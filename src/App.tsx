@@ -360,10 +360,12 @@ export default function App() {
       // 💡 해결 1: 가입 즉시 로그아웃을 명시적으로 수행하여 리스너와의 충돌 방지
       await signOut(auth);
 
-      // 💡 해결 2: 확실한 안내 문구 표출 (alert 창)
-      alert('교사 권한 신청이 완료되었습니다!\n\n최고 관리자(admin)의 임용 승인 후 로그인이 가능합니다.\n성함: ' + signUpName);
+      // 💡 해결 2: 모달을 완전히 닫아 자동으로 홈 화면으로 리다이렉션 처리 
+      setAuthModal({ show: false, mode: 'student_login' });
+
+      // 💡 해결 3: 사용자에게 확실한 가입 신청 완료 커스텀 성공 메시지 표시 (Iframe 보안을 위해 native alert 배제)
+      alertMessage('✨ [' + signUpName + '] 선생님의 권한 신청이 정상 등록되었습니다! 최고 관리자(admin) 승인 후 로그인이 가능합니다.');
       
-      setAuthModal({ show: true, mode: 'teacher_login' });
       setSignUpName(''); setSignUpId(''); setSignUpPw('');
     } catch (error) { 
       const err = /** @type {any} */ (error); 
