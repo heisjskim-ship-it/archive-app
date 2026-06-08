@@ -32,6 +32,7 @@ const X = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/
 const ArrowRight = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>;
 const ArrowLeft = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
 const Loader2 = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>;
+const Edit = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" /></svg>;
 
 // ==============================================
 // 🔥 Firebase SDK 모듈 임포트
@@ -160,6 +161,10 @@ export default function App() {
   const [submissionSearch, setSubmissionSearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
 
+  // 문제 및 질문 세트 수정을 위한 교사 전용 상태값
+  const [editQuestionModal, setEditQuestionModal] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+
   /** @type {[string | null, React.Dispatch<React.SetStateAction<string | null>>]} */
   const [activeFeedbackSubmissionId, setActiveFeedbackSubmissionId] = useState(null);
   const [feedbackInputText, setFeedbackInputText] = useState('');
@@ -201,18 +206,30 @@ export default function App() {
   /** @param {string} imageUrl @param {string} title */
   const openLightbox = (imageUrl, title) => setLightbox({ show: true, imageUrl, title });
 
-  // 💡 브라우저 탭 이름 변경
+  // 브라우저 탭 이름 변경
   useEffect(() => {
     document.title = "문제 풀이 아카이브";
   }, []);
 
-  // 🔥 Firebase 초기 인증 및 리스너
+  // 🔥 Firebase 초기 인증 및 싱크 오류 복구(Fail-safe) 리스너 
   useEffect(() => {
     const initAuth = async () => {
       if (isCanvas) {
-        // @ts-ignore
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-        else await signInAnonymously(auth);
+        try {
+          // @ts-ignore
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
+        } catch (err) {
+          console.warn("Custom token error detected, failing back to anonymous auth safely.", err);
+          try {
+            await signInAnonymously(auth);
+          } catch (anonymousErr) {
+            console.error("Critical authentication failure", anonymousErr);
+          }
+        }
       }
     };
     initAuth();
@@ -225,7 +242,6 @@ export default function App() {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            // 💡 승인 대기 상태인 경우 리스너에서 차단
             if (userData.role === 'pending_teacher') {
               await signOut(auth);
               setCurrentUser(null);
@@ -237,7 +253,6 @@ export default function App() {
           console.error(err);
         }
       } else {
-        // 최고 관리자 계정 상태 보존
         setCurrentUser(prev => (prev?.id === 'teacher_admin' ? prev : null));
       }
     });
@@ -292,6 +307,12 @@ export default function App() {
       if (studentQuestionModal) {
         setStudentNewQuestion(prev => ({ ...prev, images: [...prev.images, imageFile], imagePreviews: [...prev.imagePreviews, URL.createObjectURL(imageFile)] }));
         alertMessage('📌 클립보드 질문 이미지 추가');
+      } else if (editQuestionModal && editingQuestion) {
+        setEditingQuestion(prev => ({
+          ...prev,
+          items: [...prev.items, { url: URL.createObjectURL(imageFile), file: imageFile }]
+        }));
+        alertMessage('📌 수정용 클립보드 이미지 추가 완료');
       } else if (selectedQuestion) {
         if (currentUser?.role === 'student' && !viewingSubmission) {
           setStudentSolutionImage(imageFile); setStudentSolutionPreview(URL.createObjectURL(imageFile)); alertMessage('📌 클립보드 이미지 첨부');
@@ -311,7 +332,7 @@ export default function App() {
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal]);
+  }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal, editQuestionModal, editingQuestion]);
 
   /** @param {string} username */
   const generateEmail = (username) => `${username}@archive.edu`;
@@ -357,13 +378,8 @@ export default function App() {
       };
       await setDoc(doc(getColRef('users'), userCredential.user.uid), newTeacherData);
       
-      // 💡 해결 1: 가입 즉시 로그아웃을 명시적으로 수행하여 리스너와의 충돌 방지
       await signOut(auth);
-
-      // 💡 해결 2: 모달을 완전히 닫아 자동으로 홈 화면으로 리다이렉션 처리 
       setAuthModal({ show: false, mode: 'student_login' });
-
-      // 💡 해결 3: 사용자에게 확실한 가입 신청 완료 커스텀 성공 메시지 표시 (Iframe 보안을 위해 native alert 배제)
       alertMessage('✨ [' + signUpName + '] 선생님의 권한 신청이 정상 등록되었습니다! 최고 관리자(admin) 승인 후 로그인이 가능합니다.');
       
       setSignUpName(''); setSignUpId(''); setSignUpPw('');
@@ -481,7 +497,6 @@ export default function App() {
   const handleApproveTeacher = async (teacher) => {
     setIsLoading(true);
     try {
-      // 💡 해결 2: 정확하게 role을 'teacher'로 변경 및 상태값 업데이트
       await updateDoc(doc(getColRef('users'), teacher.id), {
         role: 'teacher',
         status: '활동중'
@@ -515,6 +530,58 @@ export default function App() {
         }
       }
     });
+  };
+
+  const openEditQuestionModal = (q) => {
+    setEditingQuestion({
+      id: q.id,
+      title: q.title,
+      tags: q.tags || [],
+      currentTagInput: '',
+      isPinned: q.isPinned || false,
+      isChallenge: q.isChallenge || false,
+      isStudentQuestion: q.isStudentQuestion || false,
+      items: q.imageUrls.map(url => ({ url, file: null })) 
+    });
+    setEditQuestionModal(true);
+  };
+
+  /** @param {React.FormEvent} e */
+  const handleUpdateQuestionSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingQuestion.title.trim() || editingQuestion.tags.length === 0 || editingQuestion.items.length === 0) {
+      return alertMessage('타이틀, 해시태그, 이미지를 모두 입력해 주세요!');
+    }
+
+    setIsLoading(true);
+    try {
+      const finalImageUrls = [];
+      for (const item of editingQuestion.items) {
+        if (item.file) {
+          const url = await uploadToCloudinary(item.file);
+          finalImageUrls.push(url);
+        } else {
+          finalImageUrls.push(item.url);
+        }
+      }
+
+      await updateDoc(doc(getColRef('questions'), editingQuestion.id), {
+        title: editingQuestion.title,
+        tags: editingQuestion.tags,
+        imageUrls: finalImageUrls,
+        isPinned: editingQuestion.isPinned,
+        isChallenge: editingQuestion.isChallenge
+      });
+
+      alertMessage('기출 및 질문 세트의 정보가 깔끔하게 수정되었습니다! ✨');
+      setEditQuestionModal(false);
+      setEditingQuestion(null);
+    } catch (err) {
+      const error = /** @type {any} */ (err);
+      alertMessage('수정 실패: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   /** @param {any} student */
@@ -1008,7 +1075,15 @@ export default function App() {
                                 <h4 className="text-xs font-bold text-slate-900 cursor-pointer hover:underline" onClick={()=>{ setSelectedQuestion(q); setViewingSubmission(null); }}>{q.title}</h4>
                               </div>
                             </div>
-                            <button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                            
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => openEditQuestionModal(q)} className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors" title="수정하기">
+                                <Edit size={16}/>
+                              </button>
+                              <button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors" title="삭제하기">
+                                <Trash2 size={16}/>
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}
@@ -1070,6 +1145,9 @@ export default function App() {
                       <h3 className="font-bold text-lg text-slate-900">학생 등록</h3>
                     </div>
                     <button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md text-sm transition-all">일괄 등록 완료</button>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold p-3.5 rounded-xl mb-4 flex items-start gap-2">
+                    <span className="text-lg leading-none">💡</span> <span>엑셀처럼 여러 명의 학생 정보를 표에 바로 입력하고 [일괄 등록 완료] 버튼을 눌러 한 번에 추가하세요. (초기 비밀번호: 123456)</span>
                   </div>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50">
                     <table className="w-full text-left text-xs border-collapse">
@@ -1279,6 +1357,7 @@ export default function App() {
         )}
       </main>
 
+      {/* 모달 팝업들 */}
       {authModal.show && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95">
@@ -1524,6 +1603,152 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
+      {editQuestionModal && editingQuestion && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center mb-5 border-b pb-3">
+              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <Edit className="text-indigo-600" size={20}/>
+                <span>문제 세트 수정</span>
+                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
+              </h3>
+              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
+            </div>
+
+            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
+                <input 
+                  type="text" 
+                  value={editingQuestion.title} 
+                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="예: 수능 기출 22번" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
+                  {editingQuestion.tags.map((tag) => (
+                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      #{tag} 
+                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
+                    </span>
+                  ))}
+                  <input 
+                    type="text" 
+                    value={editingQuestion.currentTagInput} 
+                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault(); 
+                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
+                        if (val && !editingQuestion.tags.includes(val)) {
+                          setEditingQuestion({
+                            ...editingQuestion, 
+                            tags: [...editingQuestion.tags, val], 
+                            currentTagInput: ''
+                          });
+                        }
+                      }
+                    }} 
+                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
+                    placeholder="태그 추가..." 
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isPinned} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isChallenge} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
+                <div 
+                  onDragOver={e => e.preventDefault()} 
+                  onDrop={(e) => {
+                    e.preventDefault(); 
+                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length > 0) {
+                      setEditingQuestion(prev => ({
+                        ...prev,
+                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                      }));
+                    }
+                  }} 
+                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
+                >
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {editingQuestion.items.map((item, idx) => (
+                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
+                        <button 
+                          type="button" 
+                          onClick={() => setEditingQuestion({
+                            ...editingQuestion,
+                            items: editingQuestion.items.filter((_, i) => i !== idx)
+                          })} 
+                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
+                        >
+                          <X size={10}/>
+                        </button>
+                      </div>
+                    ))}
+                    
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
+                      <Plus size={16} className="text-indigo-500" />
+                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
+                      <input 
+                        type="file" 
+                        multiple 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const files = e.target.files ? Array.from(e.target.files) : [];
+                          if (files.length > 0) {
+                            setEditingQuestion(prev => ({
+                              ...prev,
+                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                            }));
+                          }
+                        }} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 
