@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // ==============================================
-// 🎨 순수 SVG 아이콘 컴포넌트 내장 (외부 라이브러리 에러 방지)
+// 🎨 순수 SVG 아이콘 컴포넌트 내장
 // ==============================================
 const BookOpen = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
 const Upload = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>;
@@ -33,14 +33,17 @@ const ArrowRight = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.
 const ArrowLeft = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
 const Loader2 = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>;
 const Edit = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" /></svg>;
+const Download = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
+const Award = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>;
 
 // ==============================================
-// 🔥 Firebase SDK 모듈 임포트
+// 🔥 Firebase SDK 모듈 임포트 (자동 로그인 모듈 추가)
 // ==============================================
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, 
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut 
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  setPersistence, browserLocalPersistence, browserSessionPersistence
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc, getDoc
@@ -75,7 +78,7 @@ const getColRef = (colName) => {
 };
 
 // ==============================================
-// ☁️ Cloudinary 이미지 업로드 헬퍼 함수
+// ☁️ Cloudinary 이미지 업로드 및 유틸리티 헬퍼 함수
 // ==============================================
 /** @param {File} file */
 const uploadToCloudinary = async (file) => {
@@ -94,9 +97,6 @@ const uploadToCloudinary = async (file) => {
   return data.secure_url;
 };
 
-// ==============================================
-// 📅 날짜 포맷 변환 공통 헬퍼 함수
-// ==============================================
 const formatDateTime = (isoString) => {
   if (!isoString) return '미기록';
   const date = new Date(isoString);
@@ -107,6 +107,13 @@ const formatDateTime = (isoString) => {
   const hh = String(date.getHours()).padStart(2, '0');
   const min = String(date.getMinutes()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+};
+
+// 💡 이름 익명화 (블라인드) 함수 (예: 홍길동 -> 홍*동)
+const anonymizeName = (name) => {
+  if (!name) return '알수없음';
+  if (name.length <= 2) return name.charAt(0) + '*';
+  return name.charAt(0) + '*'.repeat(name.length - 2) + name.charAt(name.length - 1);
 };
 
 const TUTORIAL_STEPS = {
@@ -138,6 +145,9 @@ export default function App() {
   const [signUpName, setSignUpName] = useState('');
   const [signUpId, setSignUpId] = useState('');
   const [signUpPw, setSignUpPw] = useState('');
+  
+  // 💡 자동 로그인 유지 상태 제어
+  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
 
   const [tutorial, setTutorial] = useState({ show: false, role: '', step: 0 });
 
@@ -161,7 +171,6 @@ export default function App() {
   const [submissionSearch, setSubmissionSearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
 
-  // 문제 및 질문 세트 수정을 위한 교사 전용 상태값
   const [editQuestionModal, setEditQuestionModal] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
 
@@ -201,6 +210,9 @@ export default function App() {
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
   const [alert, setAlert] = useState({ show: false, message: '' });
 
+  // 💡 PWA (홈 화면 추가) 앱 설치 프롬프트 상태
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
   /** @param {string} msg */
   const alertMessage = (msg) => { setAlert({ show: true, message: msg }); setTimeout(() => setAlert({ show: false, message: '' }), 3500); };
   /** @param {string} imageUrl @param {string} title */
@@ -211,7 +223,36 @@ export default function App() {
     document.title = "문제 풀이 아카이브";
   }, []);
 
-  // 🔥 Firebase 초기 인증 및 싱크 오류 복구(Fail-safe) 리스너 
+  // 💡 앱 설치 (PWA) 감지 이벤트 리스너
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // 💡 스마트폰 홈 화면 설치 핸들러
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+      const isAndroid = /android/.test(window.navigator.userAgent.toLowerCase());
+      if (isIos) {
+        alertMessage("사파리 하단의 '공유(내보내기)' 아이콘을 누르고 '홈 화면에 추가'를 선택해 주세요!");
+      } else if (isAndroid) {
+        alertMessage("크롬 우측 상단의 '점 3개' 메뉴를 누르고 '홈 화면에 추가'를 선택해 주세요!");
+      } else {
+        alertMessage("브라우저 설정 메뉴에서 '웹앱 설치' 또는 '바로가기 만들기'를 선택해 주세요.");
+      }
+    }
+  };
+
+  // 🔥 Firebase 초기 인증 및 싱크 오류 복구
   useEffect(() => {
     const initAuth = async () => {
       if (isCanvas) {
@@ -397,6 +438,9 @@ export default function App() {
     if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
     setIsLoading(true);
     try {
+      // 💡 자동 로그인 여부에 따른 인증 지속성(Persistence) 변경 적용
+      await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+
       if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
         setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher' });
         setAuthModal({ show: false, mode: 'student_login' }); 
@@ -584,7 +628,6 @@ export default function App() {
     }
   };
 
-  /** @param {any} student */
   const handleResetPassword = (student) => {
     setConfirmModal({
       show: true, 
@@ -600,7 +643,6 @@ export default function App() {
     });
   };
 
-  /** @param {any} student */
   const handleDeleteStudent = (student) => {
     setConfirmModal({
       show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
@@ -613,30 +655,24 @@ export default function App() {
     });
   };
 
-  /** @param {React.KeyboardEvent<HTMLInputElement>} e */
   const handleTagKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault(); const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
       if (val && !newQuestion.tags.includes(val)) setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
     }
   };
-  /** @param {string} tagToRemove */
   const removeTag = (tagToRemove) => setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
 
-  /** @param {React.ChangeEvent<HTMLInputElement>} e */
   const handleQuestionImageChange = (e) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
   };
-  /** @param {React.DragEvent} e */
   const handleDropQuestion = (e) => {
     e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
     if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
   };
-  /** @param {number} index */
   const removeQuestionPreview = (index) => setNewQuestion(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index), imagePreviews: prev.imagePreviews.filter((_, i) => i !== index) }));
 
-  /** @param {React.FormEvent} e */
   const handleAddQuestion = async (e) => {
     e.preventDefault();
     if (!newQuestion.title.trim() || newQuestion.tags.length === 0 || newQuestion.images.length === 0) return alertMessage('타이틀, 해시태그, 이미지를 등록해주세요!');
@@ -662,7 +698,6 @@ export default function App() {
     } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
-  /** @param {React.FormEvent} e */
   const handleStudentAddQuestion = async (e) => {
     e.preventDefault();
     if (!studentNewQuestion.title.trim() || studentNewQuestion.images.length === 0) return alertMessage('질문 제목과 문제 이미지를 모두 등록해주세요!');
@@ -693,7 +728,6 @@ export default function App() {
     } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
-  /** @param {React.FormEvent} e */
   const handleSubmitSolution = async (e) => {
     e.preventDefault();
     if (!studentSolutionImage) return alertMessage('풀이 이미지를 첨부해주세요!');
@@ -736,7 +770,6 @@ export default function App() {
     } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
-  /** @param {React.FormEvent} e */
   const handleSaveFeedbackSubmit = async (e) => {
     e.preventDefault();
     if (!feedbackInputText.trim() && !feedbackInputImage) return alertMessage('코멘트나 첨삭 이미지 중 하나는 필수입니다.');
@@ -778,7 +811,6 @@ export default function App() {
     } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
   };
 
-  /** @param {React.FormEvent} e @param {string} targetSubId */
   const handlePeerCommentSubmit = async (e, targetSubId) => {
     e.preventDefault();
     if (!peerCommentInput.trim() && !peerCommentImage) return; 
@@ -850,13 +882,25 @@ export default function App() {
   const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
   const approvedTeachers = allUsers.filter(u => u.role === 'teacher' && u.id !== 'teacher_admin');
 
+  // 💡 실시간 열공 랭킹 데이터 계산 로직 (제출 10점, 질문 5점, 댓글 3점)
+  const rankingData = students.map(student => {
+    const mySubmissionsCount = submissions.filter(s => s.studentId === student.id).length;
+    const myQuestionsCount = questions.filter(q => q.teacherId === student.id && q.isStudentQuestion).length;
+    let myCommentsCount = 0;
+    submissions.forEach(s => {
+      if (s.peerComments) {
+        myCommentsCount += s.peerComments.filter(c => c.authorName === student.name).length;
+      }
+    });
+    const totalScore = (mySubmissionsCount * 10) + (myQuestionsCount * 5) + (myCommentsCount * 3);
+    return { ...student, totalScore, mySubmissionsCount, myQuestionsCount, myCommentsCount };
+  }).filter(s => s.totalScore > 0).sort((a, b) => b.totalScore - a.totalScore).slice(0, 5); // 상위 5명만 노출
+
   // ==============================================
   // 렌더링
   // ==============================================
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative">
-      
-      {/* 💡 전역 커스텀 스크롤바 스타일시트 주입 */}
       <style>{`
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -924,30 +968,147 @@ export default function App() {
         </div>
       )}
 
-      {alert.show && (
-        <div className="fixed top-5 right-5 z-[80] bg-indigo-600 text-white px-6 py-3.5 rounded-xl shadow-2xl flex items-center gap-2 border border-indigo-400 animate-slide-in">
-          <AlertCircle size={20} /> <span className="font-bold text-sm text-white">{alert.message}</span>
-        </div>
-      )}
-
-      {lightbox.show && (
-        <div onClick={() => setLightbox({ show: false, imageUrl: '', title: '' })} className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-[90] cursor-zoom-out">
-          <button className="absolute top-5 right-5 text-white bg-slate-800 px-3 py-1.5 rounded-full font-bold text-xs">✕ 닫기</button>
-          <img src={lightbox.imageUrl} alt="확대" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border-4 border-slate-800/50" />
-          <div className="mt-4 text-center"><p className="text-white font-extrabold text-base">{lightbox.title}</p></div>
-        </div>
-      )}
-
-      {confirmModal.show && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
-            <ShieldAlert size={40} className={`mx-auto ${confirmModal.isDanger ? 'text-red-500' : 'text-amber-500'}`} />
-            <h4 className="text-xl font-extrabold text-slate-900">{confirmModal.title}</h4>
-            <p className="text-sm text-slate-600 font-semibold mb-2">{confirmModal.message}</p>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmModal({ ...confirmModal, show: false, title: '', message: '', onConfirm: null, isDanger: false })} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold">취소</button>
-              <button onClick={confirmModal.onConfirm} className={`flex-1 py-3 text-white rounded-xl font-bold ${confirmModal.isDanger ? 'bg-red-600' : 'bg-indigo-600'}`}>확인</button>
+      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
+      {editQuestionModal && editingQuestion && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center mb-5 border-b pb-3">
+              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <Edit className="text-indigo-600" size={20}/>
+                <span>문제 세트 수정</span>
+                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
+              </h3>
+              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
             </div>
+
+            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
+                <input 
+                  type="text" 
+                  value={editingQuestion.title} 
+                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="예: 수능 기출 22번" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
+                  {editingQuestion.tags.map((tag) => (
+                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      #{tag} 
+                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
+                    </span>
+                  ))}
+                  <input 
+                    type="text" 
+                    value={editingQuestion.currentTagInput} 
+                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault(); 
+                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
+                        if (val && !editingQuestion.tags.includes(val)) {
+                          setEditingQuestion({
+                            ...editingQuestion, 
+                            tags: [...editingQuestion.tags, val], 
+                            currentTagInput: ''
+                          });
+                        }
+                      }
+                    }} 
+                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
+                    placeholder="태그 추가..." 
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isPinned} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isChallenge} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
+                <div 
+                  onDragOver={e => e.preventDefault()} 
+                  onDrop={(e) => {
+                    e.preventDefault(); 
+                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length > 0) {
+                      setEditingQuestion(prev => ({
+                        ...prev,
+                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                      }));
+                    }
+                  }} 
+                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
+                >
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {editingQuestion.items.map((item, idx) => (
+                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
+                        <button 
+                          type="button" 
+                          onClick={() => setEditingQuestion({
+                            ...editingQuestion,
+                            items: editingQuestion.items.filter((_, i) => i !== idx)
+                          })} 
+                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
+                        >
+                          <X size={10}/>
+                        </button>
+                      </div>
+                    ))}
+                    
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
+                      <Plus size={16} className="text-indigo-500" />
+                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
+                      <input 
+                        type="file" 
+                        multiple 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const files = e.target.files ? Array.from(e.target.files) : [];
+                          if (files.length > 0) {
+                            setEditingQuestion(prev => ({
+                              ...prev,
+                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                            }));
+                          }
+                        }} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -962,6 +1123,11 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* 💡 앱 설치 (PWA) 바로가기 버튼 */}
+            <button onClick={handleInstallApp} className="text-slate-500 hover:text-indigo-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-xl transition-colors shadow-sm">
+              <Download size={14} /> <span className="hidden sm:inline">앱 설치</span>
+            </button>
+            
             {!currentUser ? (
               <div className="flex items-center gap-2">
                 <button onClick={() => setAuthModal({ show: true, mode: 'student_login' })} className="px-3 py-2 sm:px-4 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1 hover:bg-indigo-700">
@@ -997,6 +1163,36 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* 💡 선생님 화면에도 공통 랭킹 보드 표시 */}
+            {teacherSubTab === 'content' && rankingData.length > 0 && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">
+                  <Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆
+                </h3>
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {rankingData.map((student, idx) => (
+                    <div key={student.id} className="min-w-[140px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
+                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
+                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
+                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
+                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{idx + 1}위</span>}
+                      
+                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner">
+                        <span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span>
+                      </div>
+                      <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
+                      <span className="text-xs font-black text-indigo-600 mt-1">{student.totalScore}점</span>
+                      <div className="flex gap-2 mt-2 text-[9px] text-slate-400 font-semibold text-center w-full justify-center border-t pt-2">
+                        <span>제출 {student.mySubmissionsCount}</span>
+                        <span>질문 {student.myQuestionsCount}</span>
+                        <span>피드백 {student.myCommentsCount}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {teacherSubTab === 'content' ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1328,6 +1524,36 @@ export default function App() {
               )}
             </div>
 
+            {/* 💡 학생 홈 화면에도 랭킹 보드 표시 */}
+            {activeTab === 'all' && rankingData.length > 0 && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">
+                  <Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆
+                </h3>
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {rankingData.map((student, idx) => (
+                    <div key={student.id} className="min-w-[140px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
+                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
+                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
+                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
+                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{idx + 1}위</span>}
+                      
+                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner">
+                        <span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span>
+                      </div>
+                      <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
+                      <span className="text-xs font-black text-indigo-600 mt-1">{student.totalScore}점</span>
+                      <div className="flex gap-2 mt-2 text-[9px] text-slate-400 font-semibold text-center w-full justify-center border-t pt-2">
+                        <span>제출 {student.mySubmissionsCount}</span>
+                        <span>질문 {student.myQuestionsCount}</span>
+                        <span>피드백 {student.myCommentsCount}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-8">
               {activeTab === 'all' && pinnedQuestions.length > 0 && (
                 <div>
@@ -1395,6 +1621,13 @@ export default function App() {
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div><label className="text-xs font-bold text-slate-500">아이디 (ID)</label><input type="text" value={loginIdInput} onChange={e=>setLoginIdInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" required/></div>
                 <div><label className="text-xs font-bold text-slate-500">비밀번호</label><input type="password" value={loginPwInput} onChange={e=>setLoginPwInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" required/></div>
+                
+                {/* 💡 자동 로그인 유지 토글 스위치 탑재 */}
+                <label className="flex items-center gap-2 cursor-pointer pt-1 w-fit">
+                  <input type="checkbox" checked={keepLoggedIn} onChange={e=>setKeepLoggedIn(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/>
+                  <span className="text-xs font-bold text-slate-600">자동 로그인 (로그아웃 전까지 유지)</span>
+                </label>
+
                 <button type="submit" className={`w-full py-3 text-white font-bold rounded-xl transition-all ${authModal.mode === 'teacher_login' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>로그인</button>
                 {authModal.mode === 'student_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_register'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">아직 회원이 아니신가요?</button>}
                 {authModal.mode === 'teacher_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_register'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">아직 교사 등록이 안되어 있으신가요? (권한 신청)</button>}
