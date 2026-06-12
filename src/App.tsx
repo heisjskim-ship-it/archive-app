@@ -37,7 +37,7 @@ const Download = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.or
 const Award = ({ size = 24, className = "" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>;
 
 // ==============================================
-// 🔥 Firebase SDK 모듈 임포트 (자동 로그인 모듈 추가)
+// 🔥 Firebase SDK 모듈 임포트
 // ==============================================
 import { initializeApp } from 'firebase/app';
 import { 
@@ -65,10 +65,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Canvas 프리뷰 구동을 위한 경로 헬퍼
-// @ts-ignore
 const isCanvas = typeof __app_id !== 'undefined';
-// @ts-ignore
 const canvasAppId = isCanvas ? __app_id : 'default-app-id';
 
 /** @param {string} colName */
@@ -132,9 +129,7 @@ const TUTORIAL_STEPS = {
 };
 
 export default function App() {
-  /** @type {[any, React.Dispatch<any>]} */
   const [firebaseUser, setFirebaseUser] = useState(null); 
-  /** @type {[any, React.Dispatch<any>]} */
   const [currentUser, setCurrentUser] = useState(null); 
   const [isLoading, setIsLoading] = useState(false); 
   
@@ -151,11 +146,8 @@ export default function App() {
 
   const [tutorial, setTutorial] = useState({ show: false, role: '', step: 0 });
 
-  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [questions, setQuestions] = useState([]);
-  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [students, setStudents] = useState([]);
-  /** @type {[any[], React.Dispatch<React.SetStateAction<any[]>>]} */
   const [submissions, setSubmissions] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
@@ -186,7 +178,6 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('all'); 
   const [studentQuestionSearch, setStudentQuestionSearch] = useState(''); 
-  /** @type {[any, React.Dispatch<any>]} */
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [qImageIdx, setQImageIdx] = useState(0); 
 
@@ -195,7 +186,6 @@ export default function App() {
   const [studentSolutionPreview, setStudentSolutionPreview] = useState('');
   const [isSharedChecked, setIsSharedChecked] = useState(true);
 
-  /** @type {[any, React.Dispatch<any>]} */
   const [viewingSubmission, setViewingSubmission] = useState(null); 
   const [peerCommentInput, setPeerCommentInput] = useState('');
   
@@ -210,20 +200,16 @@ export default function App() {
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
   const [alert, setAlert] = useState({ show: false, message: '' });
 
-  // 💡 PWA (홈 화면 추가) 앱 설치 프롬프트 상태
+  // 💡 PWA (홈 화면 추가) 앱 설치 프롬프트 및 가이드 모달 상태
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [appInstallModal, setAppInstallModal] = useState(false);
 
   /** @param {string} msg */
   const alertMessage = (msg) => { setAlert({ show: true, message: msg }); setTimeout(() => setAlert({ show: false, message: '' }), 3500); };
   /** @param {string} imageUrl @param {string} title */
   const openLightbox = (imageUrl, title) => setLightbox({ show: true, imageUrl, title });
 
-  // 브라우저 탭 이름 변경
-  useEffect(() => {
-    document.title = "문제 풀이 아카이브";
-  }, []);
-
-  // 💡 앱 설치 (PWA) 감지 이벤트 리스너
+  // 💡 앱 설치 감지 이벤트 리스너 수립
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
@@ -233,22 +219,18 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // 💡 스마트폰 홈 화면 설치 핸들러
+  // 💡 스마트폰 홈 화면 설치 핸들러 개편
   const handleInstallApp = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setDeferredPrompt(null);
-    } else {
-      const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-      const isAndroid = /android/.test(window.navigator.userAgent.toLowerCase());
-      if (isIos) {
-        alertMessage("사파리 하단의 '공유(내보내기)' 아이콘을 누르고 '홈 화면에 추가'를 선택해 주세요!");
-      } else if (isAndroid) {
-        alertMessage("크롬 우측 상단의 '점 3개' 메뉴를 누르고 '홈 화면에 추가'를 선택해 주세요!");
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
       } else {
-        alertMessage("브라우저 설정 메뉴에서 '웹앱 설치' 또는 '바로가기 만들기'를 선택해 주세요.");
+        setAppInstallModal(true); // 거절하거나 작동하지 않을 경우 안내 가이드 모달 노출
       }
+    } else {
+      setAppInstallModal(true); // PWA 설치 미지원 환경 또는 Iframe 환경 시 가이드 노출
     }
   };
 
@@ -438,7 +420,6 @@ export default function App() {
     if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
     setIsLoading(true);
     try {
-      // 💡 자동 로그인 여부에 따른 인증 지속성(Persistence) 변경 적용
       await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
 
       if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
@@ -628,221 +609,12 @@ export default function App() {
     }
   };
 
-  const handleResetPassword = (student) => {
-    setConfirmModal({
-      show: true, 
-      title: '비밀번호 강제 초기화', 
-      message: '[' + student.name + '] 비밀번호를 [123456]로 초기화합니다.', 
-      isDanger: false,
-      onConfirm: async () => {
-        setIsLoading(true); 
-        alertMessage('[' + student.name + "] 학생 비밀번호가 '123456'으로 초기화되었습니다.");
-        setIsLoading(false); 
-        setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
-      }
-    });
-  };
-
-  const handleDeleteStudent = (student) => {
-    setConfirmModal({
-      show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
-      onConfirm: async () => {
-        setIsLoading(true);
-        try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제됨.'); } 
-        catch(err) { const error = /** @type {any} */ (err); alertMessage('오류: ' + error.message); } 
-        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
-      }
-    });
-  };
-
-  const handleTagKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault(); const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
-      if (val && !newQuestion.tags.includes(val)) setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
-    }
-  };
-  const removeTag = (tagToRemove) => setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
-
-  const handleQuestionImageChange = (e) => {
-    const files = e.target.files ? Array.from(e.target.files) : [];
-    if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
-  };
-  const handleDropQuestion = (e) => {
-    e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
-  };
-  const removeQuestionPreview = (index) => setNewQuestion(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index), imagePreviews: prev.imagePreviews.filter((_, i) => i !== index) }));
-
-  const handleAddQuestion = async (e) => {
-    e.preventDefault();
-    if (!newQuestion.title.trim() || newQuestion.tags.length === 0 || newQuestion.images.length === 0) return alertMessage('타이틀, 해시태그, 이미지를 등록해주세요!');
-
-    setIsLoading(true);
-    try {
-      const uploadedImageUrls = [];
-      for (const file of newQuestion.images) {
-        const url = await uploadToCloudinary(file);
-        uploadedImageUrls.push(url);
-      }
-
-      const questionData = {
-        title: newQuestion.title, tags: newQuestion.tags, imageUrls: uploadedImageUrls,
-        createdAt: new Date().toISOString(), teacherName: currentUser.name, teacherId: currentUser.id,
-        isPinned: newQuestion.isPinned, isChallenge: newQuestion.isChallenge,
-        isStudentQuestion: false
-      };
-      await addDoc(getColRef('questions'), questionData);
-      
-      alertMessage('새로운 문제가 등록되었습니다!');
-      setNewQuestion({ title: '', tags: [], currentTagInput: '', images: [], imagePreviews: [], isPinned: false, isChallenge: false });
-    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
-  };
-
-  const handleStudentAddQuestion = async (e) => {
-    e.preventDefault();
-    if (!studentNewQuestion.title.trim() || studentNewQuestion.images.length === 0) return alertMessage('질문 제목과 문제 이미지를 모두 등록해주세요!');
-
-    setIsLoading(true);
-    try {
-      const uploadedImageUrls = [];
-      for (const file of studentNewQuestion.images) {
-        uploadedImageUrls.push(await uploadToCloudinary(file));
-      }
-
-      const questionData = {
-        title: studentNewQuestion.title, 
-        tags: ['질문있어요'], 
-        imageUrls: uploadedImageUrls,
-        createdAt: new Date().toISOString(), 
-        teacherName: currentUser.name, 
-        teacherId: currentUser.id,
-        isPinned: false, 
-        isChallenge: studentNewQuestion.isShared, 
-        isStudentQuestion: true
-      };
-      await addDoc(getColRef('questions'), questionData);
-      
-      alertMessage('질문이 성공적으로 등록되었습니다!');
-      setStudentNewQuestion({ title: '', images: [], imagePreviews: [], isShared: true });
-      setStudentQuestionModal(false);
-    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
-  };
-
-  const handleSubmitSolution = async (e) => {
-    e.preventDefault();
-    if (!studentSolutionImage) return alertMessage('풀이 이미지를 첨부해주세요!');
-    
-    setIsLoading(true);
-    try {
-      const downloadUrl = await uploadToCloudinary(studentSolutionImage);
-      
-      const existingSub = submissions.find(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id);
-
-      if (existingSub) {
-        const oldAttempts = existingSub.attempts || [{ 
-          imageUrl: existingSub.imageUrl, feedbackText: existingSub.feedbackText || '', 
-          feedbackImageUrl: existingSub.feedbackImageUrl || '', submittedAt: existingSub.submittedAt 
-        }];
-        const newAttempt = { imageUrl: downloadUrl, submittedAt: new Date().toISOString(), feedbackText: '', feedbackImageUrl: '' };
-        
-        await updateDoc(doc(getColRef('submissions'), existingSub.id), {
-          attempts: [...oldAttempts, newAttempt],
-          imageUrl: downloadUrl, 
-          status: '피드백 대기',
-          feedbackText: '',
-          feedbackImageUrl: '',
-          submittedAt: new Date().toISOString()
-        });
-        alertMessage('새로운 풀이(회차)가 추가로 제출되었습니다!');
-      } else {
-        const newSubmission = {
-          questionId: selectedQuestion.id, studentId: currentUser.id, studentName: currentUser.name,
-          submittedAt: new Date().toISOString(), imageUrl: downloadUrl, status: '피드백 대기',
-          feedbackImageUrl: '', feedbackText: '', feedbackAt: '',
-          isShared: selectedQuestion.isChallenge ? isSharedChecked : false, peerComments: [],
-          attempts: [{ imageUrl: downloadUrl, submittedAt: new Date().toISOString(), feedbackText: '', feedbackImageUrl: '' }]
-        };
-        await addDoc(getColRef('submissions'), newSubmission);
-        alertMessage('성공적으로 제출되었습니다!');
-      }
-
-      setStudentSolutionImage(null); setStudentSolutionPreview(''); setSelectedQuestion(null); setIsEditingSolution(false);
-    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
-  };
-
-  const handleSaveFeedbackSubmit = async (e) => {
-    e.preventDefault();
-    if (!feedbackInputText.trim() && !feedbackInputImage) return alertMessage('코멘트나 첨삭 이미지 중 하나는 필수입니다.');
-    
-    setIsLoading(true);
-    try {
-      const attempts = viewingSubmission.attempts || [{ 
-        imageUrl: viewingSubmission.imageUrl, feedbackText: viewingSubmission.feedbackText, 
-        feedbackImageUrl: viewingSubmission.feedbackImageUrl, submittedAt: viewingSubmission.submittedAt 
-      }];
-      
-      let finalFeedbackUrl = attempts[selectedAttemptIdx]?.feedbackImageUrl || '';
-      if (feedbackInputImage) {
-        finalFeedbackUrl = await uploadToCloudinary(feedbackInputImage);
-      }
-
-      attempts[selectedAttemptIdx].feedbackText = feedbackInputText;
-      attempts[selectedAttemptIdx].feedbackImageUrl = finalFeedbackUrl;
-      attempts[selectedAttemptIdx].feedbackAt = new Date().toISOString();
-
-      let topLevelUpdates = {};
-      if (selectedAttemptIdx === attempts.length - 1) {
-        topLevelUpdates = {
-          feedbackText: feedbackInputText,
-          feedbackImageUrl: finalFeedbackUrl,
-          feedbackAt: attempts[selectedAttemptIdx].feedbackAt,
-          status: '피드백 완료'
-        };
-      }
-
-      await updateDoc(doc(getColRef('submissions'), activeFeedbackSubmissionId), {
-        attempts: attempts,
-        ...topLevelUpdates
-      });
-
-      alertMessage('첨삭 피드백 전달 완료!');
-      setViewingSubmission(null); setSelectedQuestion(null); setActiveFeedbackSubmissionId(null);
-      setFeedbackInputText(''); setFeedbackInputImage(null); setFeedbackInputImagePreview('');
-    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
-  };
-
-  const handlePeerCommentSubmit = async (e, targetSubId) => {
-    e.preventDefault();
-    if (!peerCommentInput.trim() && !peerCommentImage) return; 
-    setIsLoading(true);
-    try {
-      let imgUrl = '';
-      if (peerCommentImage) {
-        imgUrl = await uploadToCloudinary(peerCommentImage);
-      }
-
-      const targetSub = submissions.find(s => s.id === targetSubId);
-      const newComment = { 
-        id: `c-${Date.now()}`, 
-        authorName: currentUser.name, 
-        text: peerCommentInput, 
-        imageUrl: imgUrl, 
-        createdAt: new Date().toISOString() 
-      };
-      await updateDoc(doc(getColRef('submissions'), targetSubId), { peerComments: [...(targetSub?.peerComments || []), newComment] });
-      setPeerCommentInput(''); 
-      setPeerCommentImage(null);
-      setPeerCommentImagePreview('');
-      alertMessage('답변/댓글 등록 완료!');
-    } catch (err) { const error = /** @type {any} */ (err); alertMessage(error.message); } finally { setIsLoading(false); }
-  };
-
   const filteredStudentQuestions = questions.filter(q => {
     const query = studentQuestionSearch.trim().toLowerCase();
     let matchQuery = true;
     if (query) {
       const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-      matchQuery = q.title.toLowerCase().includes(cleanQuery) || q.tags.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery)) || q.teacherName.toLowerCase().includes(cleanQuery);
+      matchQuery = q.title.toLowerCase().includes(cleanQuery) || q.tags.some((tag) => tag.toLowerCase().includes(cleanQuery)) || q.teacherName.toLowerCase().includes(cleanQuery);
     }
     if (activeTab === 'my' && currentUser) {
       const solvedQuestionIds = submissions.filter(s => s.studentId === currentUser.id).map(s => s.questionId);
@@ -858,7 +630,7 @@ export default function App() {
     const query = teacherQuestionSearch.trim().toLowerCase();
     if (!query) return true;
     const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-    return q.title.toLowerCase().includes(cleanQuery) || q.tags.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery));
+    return q.title.toLowerCase().includes(cleanQuery) || q.tags.some((tag) => tag.toLowerCase().includes(cleanQuery));
   });
 
   const filteredSubmissions = submissions.filter(sub => {
@@ -866,7 +638,7 @@ export default function App() {
     const query = submissionSearch.trim().toLowerCase();
     if (!query) return true;
     const cleanQuery = query.startsWith('#') ? query.slice(1) : query;
-    return (sub.studentName.toLowerCase().includes(cleanQuery) || relatedQ.tags?.some((/** @type {string} */ tag) => tag.toLowerCase().includes(cleanQuery)) || relatedQ.title?.toLowerCase().includes(cleanQuery) || sub.status.toLowerCase().includes(cleanQuery));
+    return (sub.studentName.toLowerCase().includes(cleanQuery) || relatedQ.tags?.some((tag) => tag.toLowerCase().includes(cleanQuery)) || relatedQ.title?.toLowerCase().includes(cleanQuery) || sub.status.toLowerCase().includes(cleanQuery));
   });
 
   const filteredStudents = students.filter(st => {
@@ -882,7 +654,7 @@ export default function App() {
   const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
   const approvedTeachers = allUsers.filter(u => u.role === 'teacher' && u.id !== 'teacher_admin');
 
-  // 💡 실시간 열공 랭킹 데이터 계산 로직 (제출 10점, 질문 5점, 댓글 3점)
+  // 실시간 열공 랭킹 데이터 계산 로직
   const rankingData = students.map(student => {
     const mySubmissionsCount = submissions.filter(s => s.studentId === student.id).length;
     const myQuestionsCount = questions.filter(q => q.teacherId === student.id && q.isStudentQuestion).length;
@@ -894,13 +666,15 @@ export default function App() {
     });
     const totalScore = (mySubmissionsCount * 10) + (myQuestionsCount * 5) + (myCommentsCount * 3);
     return { ...student, totalScore, mySubmissionsCount, myQuestionsCount, myCommentsCount };
-  }).filter(s => s.totalScore > 0).sort((a, b) => b.totalScore - a.totalScore).slice(0, 5); // 상위 5명만 노출
+  }).filter(s => s.totalScore > 0).sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
 
   // ==============================================
   // 렌더링
   // ==============================================
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative">
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative select-none">
+      
+      {/* 💡 전역 커스텀 스크롤바 스타일시트 주입 */}
       <style>{`
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -968,147 +742,51 @@ export default function App() {
         </div>
       )}
 
-      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
-      {editQuestionModal && editingQuestion && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
-            <div className="flex justify-between items-center mb-5 border-b pb-3">
-              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
-                <Edit className="text-indigo-600" size={20}/>
-                <span>문제 세트 수정</span>
-                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
-              </h3>
-              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
+      {/* 💡 기기별 초간편 홈 화면 바로가기 추가 가이드 모달 */}
+      {appInstallModal && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 relative border border-slate-100">
+            <button onClick={() => setAppInstallModal(false)} className="absolute top-4 right-4 text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
+            
+            <div className="text-center mb-5">
+              <div className="bg-indigo-50 text-indigo-600 p-3.5 rounded-full w-fit mx-auto mb-2.5">
+                <Download size={28} />
+              </div>
+              <h3 className="font-extrabold text-lg text-slate-900">홈 화면에 바로가기 앱 설치</h3>
+              <p className="text-xs text-slate-500 mt-1">링크 입력 없이 스마트폰에서 1초 만에 바로 접속하세요!</p>
             </div>
 
-            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
-                <input 
-                  type="text" 
-                  value={editingQuestion.title} 
-                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
-                  placeholder="예: 수능 기출 22번" 
-                  required 
-                />
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              {/* 아이폰용 설명 */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <h4 className="font-bold text-xs text-indigo-600 flex items-center gap-1.5 mb-2">🍎 아이폰 (Safari 사파리 브라우저)</h4>
+                <ol className="list-decimal pl-4 text-xs font-semibold text-slate-600 space-y-1">
+                  <li>Safari 브라우저 하단 중앙의 <b className="text-slate-900 bg-slate-200 px-1 py-0.5 rounded">공유(내보내기 📤)</b> 버튼을 탭합니다.</li>
+                  <li>메뉴 목록을 아래로 스크롤하여 <b className="text-slate-900">홈 화면에 추가 (+)</b>를 선택합니다.</li>
+                  <li>우측 상단 <b className="text-indigo-600">추가</b>를 누르면 설치가 완료됩니다!</li>
+                </ol>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
-                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
-                  {editingQuestion.tags.map((tag) => (
-                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      #{tag} 
-                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
-                    </span>
-                  ))}
-                  <input 
-                    type="text" 
-                    value={editingQuestion.currentTagInput} 
-                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault(); 
-                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
-                        if (val && !editingQuestion.tags.includes(val)) {
-                          setEditingQuestion({
-                            ...editingQuestion, 
-                            tags: [...editingQuestion.tags, val], 
-                            currentTagInput: ''
-                          });
-                        }
-                      }
-                    }} 
-                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
-                    placeholder="태그 추가..." 
-                  />
-                </div>
+              {/* 안드로이드용 설명 */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <h4 className="font-bold text-xs text-emerald-600 flex items-center gap-1.5 mb-2">🤖 안드로이드 (크롬 / 삼성 인터넷)</h4>
+                <ol className="list-decimal pl-4 text-xs font-semibold text-slate-600 space-y-1">
+                  <li>브라우저 상단 주소창 옆의 <b className="text-slate-900">설치 아이콘(📥)</b>을 터치하거나,</li>
+                  <li>오른쪽 끝의 <b className="text-slate-900 bg-slate-200 px-1 py-0.5 rounded">메뉴(더보기 ፧)</b> 버튼을 누릅니다.</li>
+                  <li><b className="text-slate-900">홈 화면에 추가</b> 또는 <b className="text-slate-900">앱 설치</b>를 탭합니다.</li>
+                </ol>
               </div>
 
-              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isPinned} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isChallenge} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
-                </label>
+              {/* PC 환경 설명 */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1.5 mb-2">💻 PC (크롬 / 엣지 브라우저)</h4>
+                <p className="text-xs font-semibold text-slate-600 leading-relaxed">
+                  인터넷 주소창 우측에 있는 <b className="text-slate-900 bg-slate-200 px-1.5 py-0.5 rounded">앱 설치 아이콘(모니터 모양 🖥️)</b>을 누르거나, 메뉴의 '앱 설치'를 클릭해 보세요. 바탕화면에 바로 접속 아이콘이 생성됩니다.
+                </p>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
-                <div 
-                  onDragOver={e => e.preventDefault()} 
-                  onDrop={(e) => {
-                    e.preventDefault(); 
-                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-                    if (files.length > 0) {
-                      setEditingQuestion(prev => ({
-                        ...prev,
-                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                      }));
-                    }
-                  }} 
-                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
-                >
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {editingQuestion.items.map((item, idx) => (
-                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
-                        <button 
-                          type="button" 
-                          onClick={() => setEditingQuestion({
-                            ...editingQuestion,
-                            items: editingQuestion.items.filter((_, i) => i !== idx)
-                          })} 
-                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
-                        >
-                          <X size={10}/>
-                        </button>
-                      </div>
-                    ))}
-                    
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
-                      <Plus size={16} className="text-indigo-500" />
-                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
-                      <input 
-                        type="file" 
-                        multiple 
-                        accept="image/*" 
-                        onChange={(e) => {
-                          const files = e.target.files ? Array.from(e.target.files) : [];
-                          if (files.length > 0) {
-                            setEditingQuestion(prev => ({
-                              ...prev,
-                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                            }));
-                          }
-                        }} 
-                        className="hidden" 
-                      />
-                    </label>
-                  </div>
-                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 pt-3">
-                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
-              </div>
-            </form>
+            <button onClick={() => setAppInstallModal(false)} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold mt-5 transition-colors shadow-md text-xs">확인 완료</button>
           </div>
         </div>
       )}
@@ -1123,7 +801,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* 💡 앱 설치 (PWA) 바로가기 버튼 */}
+            {/* 💡 앱 설치 (PWA) 바로가기 추가 버튼 */}
             <button onClick={handleInstallApp} className="text-slate-500 hover:text-indigo-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-xl transition-colors shadow-sm">
               <Download size={14} /> <span className="hidden sm:inline">앱 설치</span>
             </button>
@@ -1164,15 +842,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* 💡 선생님 화면에도 공통 랭킹 보드 표시 */}
+            {/* 💡 랭킹 보드: 상단 여백(pt-4)과 좌우 가로폭(min-w-[155px])을 확보하여 절대좌표 순위 뱃지의 잘림 버그 완벽 제어 */}
             {teacherSubTab === 'content' && rankingData.length > 0 && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">
                   <Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆
                 </h3>
-                <div className="flex gap-4 overflow-x-auto pb-2">
+                <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
                   {rankingData.map((student, idx) => (
-                    <div key={student.id} className="min-w-[140px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
+                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
                       {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
                       {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
                       {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
@@ -1206,7 +884,7 @@ export default function App() {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (입력 후 Space/Enter)</label>
                       <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
-                        {newQuestion.tags.map((/** @type {string} */ tag) => (
+                        {newQuestion.tags.map((tag) => (
                           <span key={tag} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">#{tag} <button type="button" onClick={()=>removeTag(tag)}>✕</button></span>
                         ))}
                         <input type="text" value={newQuestion.currentTagInput} onChange={e => setNewQuestion({...newQuestion, currentTagInput: e.target.value})} onKeyDown={handleTagKeyDown} className="flex-1 outline-none text-sm min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" placeholder="태그 추가..." />
@@ -1484,7 +1162,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in font-sans">
             <div className="bg-gradient-to-r from-indigo-700 to-indigo-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-start gap-6 relative overflow-hidden">
               <div className="space-y-3 z-10 relative">
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-amber-200">
@@ -1524,15 +1202,15 @@ export default function App() {
               )}
             </div>
 
-            {/* 💡 학생 홈 화면에도 랭킹 보드 표시 */}
+            {/* 💡 랭킹 보드: 상단 여백(pt-4)과 가로폭(min-w-[155px])을 부여해 절대좌표 뱃지의 잘림 버그 완벽 제어 */}
             {activeTab === 'all' && rankingData.length > 0 && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2">
                   <Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆
                 </h3>
-                <div className="flex gap-4 overflow-x-auto pb-2">
+                <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
                   {rankingData.map((student, idx) => (
-                    <div key={student.id} className="min-w-[140px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
+                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
                       {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
                       {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
                       {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
@@ -1654,7 +1332,7 @@ export default function App() {
               <div className="md:w-1/2 flex flex-col border-r border-slate-200 bg-slate-50/50 p-6 overflow-y-auto">
                 <h4 className="text-xs font-extrabold text-slate-500 flex items-center gap-1 mb-3"><FileText size={14}/> 기출문제 세트</h4>
                 <div className="relative group bg-white border border-slate-200 rounded-xl flex items-center justify-center h-[350px] mb-4">
-                  <img src={selectedQuestion.imageUrls[qImageIdx]} alt={`문제 ${qImageIdx+1}`} className="max-h-full max-w-full object-contain p-2 cursor-zoom-in" onClick={()=>openLightbox(selectedQuestion.imageUrls[qImageIdx], selectedQuestion.title + ' (' + (qImageIdx+1) + '장)')} />
+                  <img src={selectedQuestion.imageUrls[qImageIdx]} alt={selectedQuestion.title} className="max-h-full max-w-full object-contain p-2 cursor-zoom-in" onClick={()=>openLightbox(selectedQuestion.imageUrls[qImageIdx], selectedQuestion.title + ' (' + (qImageIdx+1) + '장)')} />
                   {selectedQuestion.imageUrls.length > 1 && (
                     <>
                       <button onClick={(e) => { e.stopPropagation(); setQImageIdx(p => Math.max(0, p - 1)); }} disabled={qImageIdx === 0} className={`absolute left-2 p-2 rounded-full bg-slate-800/60 text-white hover:bg-slate-800 transition ${qImageIdx === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}><ArrowLeft size={20}/></button>
@@ -1984,14 +1662,14 @@ export default function App() {
 
     </div>
   );
+}
 
-  function renderQuestionCard(q, isHighlight) {
-    const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
-    return (
-      <div key={q.id} onClick={() => { if(!currentUser) { setAuthModal({show:true, mode:'student_login'}); alertMessage('로그인이 필요합니다!'); return; } setSelectedQuestion(q); }} className={`bg-white rounded-3xl overflow-hidden border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer group flex flex-col h-full ${isHighlight ? 'border-amber-300 ring-4 ring-amber-500/10 shadow-lg' : 'border-slate-200 shadow-sm'}`}>
-        <div className="relative h-44 bg-slate-100 overflow-hidden shrink-0"><img src={q.imageUrls[0]} alt={q.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4"><span className="bg-white/95 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow flex items-center gap-1.5"><Eye size={14} /> 풀기 및 확인</span></div><div className="absolute top-3 left-3 flex flex-wrap gap-1 z-10 max-w-[80%]">{q.isPinned && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Pin size={10}/>공지</span>}{q.isChallenge && !q.tags.includes('질문있어요') && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Trophy size={10}/>챌린지</span>}{q.tags.includes('질문있어요') && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><MessageCircle size={10}/>질문</span>}{q.imageUrls.length > 1 && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">+{q.imageUrls.length - 1}장</span>}</div>{isSolved && <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-md z-10"><Check size={12} strokeWidth={3}/>제출완료</div>}</div>
-        <div className="p-4 flex flex-col justify-between flex-1"><div><h4 className="font-extrabold text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{q.title}</h4><div className="flex flex-wrap gap-1">{q.tags.slice(0,3).map((tag, idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}</div></div><div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between"><span className="text-[10px] font-semibold text-slate-400">{q.teacherName} {q.isStudentQuestion ? '학생' : '선생님'}</span><ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500" /></div></div>
-      </div>
-    );
-  }
+function renderQuestionCard(q, isHighlight) {
+  const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
+  return (
+    <div key={q.id} onClick={() => { if(!currentUser) { setAuthModal({show:true, mode:'student_login'}); alertMessage('로그인이 필요합니다!'); return; } setSelectedQuestion(q); }} className={`bg-white rounded-3xl overflow-hidden border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer group flex flex-col h-full ${isHighlight ? 'border-amber-300 ring-4 ring-amber-500/10 shadow-lg' : 'border-slate-200 shadow-sm'}`}>
+      <div className="relative h-44 bg-slate-100 overflow-hidden shrink-0"><img src={q.imageUrls[0]} alt={q.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4"><span className="bg-white/95 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow flex items-center gap-1.5"><Eye size={14} /> 풀기 및 확인</span></div><div className="absolute top-3 left-3 flex flex-wrap gap-1 z-10 max-w-[80%]">{q.isPinned && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Pin size={10}/>공지</span>}{q.isChallenge && !q.tags.includes('질문있어요') && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Trophy size={10}/>챌린지</span>}{q.tags.includes('질문있어요') && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><MessageCircle size={10}/>질문</span>}{q.imageUrls.length > 1 && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">+{q.imageUrls.length - 1}장</span>}</div>{isSolved && <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-md z-10"><Check size={12} strokeWidth={3}/>제출완료</div>}</div>
+      <div className="p-4 flex flex-col justify-between flex-1"><div><h4 className="font-extrabold text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{q.title}</h4><div className="flex flex-wrap gap-1">{q.tags.slice(0,3).map((tag, idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}</div></div><div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between"><span className="text-[10px] font-semibold text-slate-400">{q.teacherName} {q.isStudentQuestion ? '학생' : '선생님'}</span><ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500" /></div></div>
+    </div>
+  );
 }
