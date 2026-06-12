@@ -227,10 +227,10 @@ export default function App() {
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
       } else {
-        setAppInstallModal(true); // 거절하거나 작동하지 않을 경우 안내 가이드 모달 노출
+        setAppInstallModal(true);
       }
     } else {
-      setAppInstallModal(true); // PWA 설치 미지원 환경 또는 Iframe 환경 시 가이드 노출
+      setAppInstallModal(true);
     }
   };
 
@@ -357,10 +357,12 @@ export default function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal, editQuestionModal, editingQuestion]);
 
-  /** @param {string} username */
+  // =========================================================================
+  // 💡 누락되었던 핵심 데이터 제어(Handler) 함수들 완벽 복구
+  // =========================================================================
+
   const generateEmail = (username) => `${username}@archive.edu`;
 
-  /** @param {React.FormEvent} e */
   const handleStudentSignUp = async (e) => {
     e.preventDefault();
     if (!signUpNo.trim() || !signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
@@ -378,11 +380,14 @@ export default function App() {
       setAuthModal({ show: false, mode: 'student_login' });
       setSignUpNo(''); setSignUpName(''); setSignUpId(''); setSignUpPw('');
       setTutorial({ show: true, role: 'student', step: 0 });
-    } catch (error) { const err = /** @type {any} */ (error); alertMessage(err.code === 'auth/email-already-in-use' ? '이미 사용 중인 아이디입니다.' : '가입 실패: ' + err.message); } 
-    finally { setIsLoading(false); }
+    } catch (error) { 
+      const err = error; 
+      alertMessage(err.code === 'auth/email-already-in-use' ? '이미 사용 중인 아이디입니다.' : '가입 실패: ' + err.message); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
-  /** @param {React.FormEvent} e */
   const handleTeacherSignUp = async (e) => {
     e.preventDefault();
     if (!signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
@@ -392,29 +397,22 @@ export default function App() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, generateEmail(signUpId.trim()), signUpPw.trim());
       const newTeacherData = {
-        role: 'pending_teacher', 
-        name: signUpName.trim(), 
-        username: signUpId.trim(),
-        joinDate: new Date().toISOString().split('T')[0], 
-        loginCount: 0, 
-        status: '승인대기'
+        role: 'pending_teacher', name: signUpName.trim(), username: signUpId.trim(),
+        joinDate: new Date().toISOString().split('T')[0], loginCount: 0, status: '승인대기'
       };
       await setDoc(doc(getColRef('users'), userCredential.user.uid), newTeacherData);
-      
       await signOut(auth);
       setAuthModal({ show: false, mode: 'student_login' });
       alertMessage('✨ [' + signUpName + '] 선생님의 권한 신청이 정상 등록되었습니다! 최고 관리자(admin) 승인 후 로그인이 가능합니다.');
-      
       setSignUpName(''); setSignUpId(''); setSignUpPw('');
     } catch (error) { 
-      const err = /** @type {any} */ (error); 
+      const err = error; 
       alertMessage(err.code === 'auth/email-already-in-use' ? '이미 가입 신청된 교사 아이디입니다.' : '신청 실패: ' + err.message); 
     } finally { 
       setIsLoading(false); 
     }
   };
 
-  /** @param {React.FormEvent} e */
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
@@ -435,12 +433,10 @@ export default function App() {
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        
         if (userData.role === 'pending_teacher') {
           await signOut(auth);
           throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 계정입니다. 승인 후 다시 시도해 주세요!');
         }
-        
         if (authModal.mode === 'teacher_login' && userData.role !== 'teacher') {
           await signOut(auth);
           throw new Error('교사 권한이 없는 계정입니다.');
@@ -463,12 +459,10 @@ export default function App() {
         throw new Error('회원 정보가 없습니다.');
       }
     } catch (error) { 
-      const err = /** @type {any} */ (error); 
+      const err = error; 
       alertMessage(err.message || '아이디 또는 비밀번호 오류입니다.'); 
     } finally { 
-      setIsLoading(false); 
-      setLoginIdInput(''); 
-      setLoginPwInput(''); 
+      setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); 
     }
   };
 
@@ -489,10 +483,8 @@ export default function App() {
     setTutorial({ show: false, role: '', step: 0 });
   };
 
-  /** @param {number} rowId @param {string} field @param {string} value */
   const handleDraftChange = (rowId, field, value) => setDraftStudents(draftStudents.map(row => row.rowId === rowId ? { ...row, [field]: value } : row));
   const handleAddDraftRow = () => setDraftStudents([...draftStudents, { rowId: Date.now(), no: '', name: '', username: '' }]);
-  /** @param {number} rowId */
   const handleRemoveDraftRow = (rowId) => {
     if (draftStudents.length === 1) return alertMessage('최소 1줄은 필요합니다.');
     setDraftStudents(draftStudents.filter(row => row.rowId !== rowId));
@@ -522,92 +514,220 @@ export default function App() {
   const handleApproveTeacher = async (teacher) => {
     setIsLoading(true);
     try {
-      await updateDoc(doc(getColRef('users'), teacher.id), {
-        role: 'teacher',
-        status: '활동중'
-      });
+      await updateDoc(doc(getColRef('users'), teacher.id), { role: 'teacher', status: '활동중' });
       alertMessage('[' + teacher.name + '] 선생님의 임용 승인이 완료되었습니다! 이제 로그인이 가능합니다.');
     } catch (err) {
-      const error = /** @type {any} */ (err);
-      alertMessage('승인 오류: ' + error.message);
-    } finally {
-      setIsLoading(false);
-    }
+      alertMessage('승인 오류: ' + err.message);
+    } finally { setIsLoading(false); }
   };
 
   const handleRejectTeacher = async (teacher) => {
     setConfirmModal({
-      show: true,
-      title: '삭제 확인',
-      message: '[' + teacher.name + '] 계정을 삭제하시겠습니까?',
-      isDanger: true,
+      show: true, title: '삭제 확인', message: '[' + teacher.name + '] 계정을 삭제하시겠습니까?', isDanger: true,
       onConfirm: async () => {
         setIsLoading(true);
-        try {
-          await deleteDoc(doc(getColRef('users'), teacher.id));
-          alertMessage('정상적으로 삭제 처리되었습니다.');
-        } catch (err) {
-          const error = /** @type {any} */ (err);
-          alertMessage('오류: ' + error.message);
-        } finally {
-          setIsLoading(false);
-          setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
-        }
+        try { await deleteDoc(doc(getColRef('users'), teacher.id)); alertMessage('정상적으로 삭제 처리되었습니다.'); } 
+        catch (err) { alertMessage('오류: ' + err.message); } 
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
   };
 
   const openEditQuestionModal = (q) => {
     setEditingQuestion({
-      id: q.id,
-      title: q.title,
-      tags: q.tags || [],
-      currentTagInput: '',
-      isPinned: q.isPinned || false,
-      isChallenge: q.isChallenge || false,
-      isStudentQuestion: q.isStudentQuestion || false,
-      items: q.imageUrls.map(url => ({ url, file: null })) 
+      id: q.id, title: q.title, tags: q.tags || [], currentTagInput: '', isPinned: q.isPinned || false, isChallenge: q.isChallenge || false,
+      isStudentQuestion: q.isStudentQuestion || false, items: q.imageUrls.map(url => ({ url, file: null })) 
     });
     setEditQuestionModal(true);
   };
 
-  /** @param {React.FormEvent} e */
   const handleUpdateQuestionSubmit = async (e) => {
     e.preventDefault();
     if (!editingQuestion.title.trim() || editingQuestion.tags.length === 0 || editingQuestion.items.length === 0) {
       return alertMessage('타이틀, 해시태그, 이미지를 모두 입력해 주세요!');
     }
-
     setIsLoading(true);
     try {
       const finalImageUrls = [];
       for (const item of editingQuestion.items) {
-        if (item.file) {
-          const url = await uploadToCloudinary(item.file);
-          finalImageUrls.push(url);
-        } else {
-          finalImageUrls.push(item.url);
-        }
+        if (item.file) finalImageUrls.push(await uploadToCloudinary(item.file));
+        else finalImageUrls.push(item.url);
       }
-
       await updateDoc(doc(getColRef('questions'), editingQuestion.id), {
-        title: editingQuestion.title,
-        tags: editingQuestion.tags,
-        imageUrls: finalImageUrls,
-        isPinned: editingQuestion.isPinned,
-        isChallenge: editingQuestion.isChallenge
+        title: editingQuestion.title, tags: editingQuestion.tags, imageUrls: finalImageUrls,
+        isPinned: editingQuestion.isPinned, isChallenge: editingQuestion.isChallenge
       });
-
       alertMessage('기출 및 질문 세트의 정보가 깔끔하게 수정되었습니다! ✨');
-      setEditQuestionModal(false);
-      setEditingQuestion(null);
+      setEditQuestionModal(false); setEditingQuestion(null);
     } catch (err) {
-      const error = /** @type {any} */ (err);
-      alertMessage('수정 실패: ' + error.message);
-    } finally {
-      setIsLoading(false);
+      alertMessage('수정 실패: ' + err.message);
+    } finally { setIsLoading(false); }
+  };
+
+  const handleResetPassword = (student) => {
+    setConfirmModal({
+      show: true, title: '비밀번호 강제 초기화', message: '[' + student.name + '] 비밀번호를 [123456]로 초기화합니다.', isDanger: false,
+      onConfirm: async () => {
+        setIsLoading(true); alertMessage('[' + student.name + "] 학생 비밀번호가 '123456'으로 초기화되었습니다.");
+        setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false });
+      }
+    });
+  };
+
+  const handleDeleteStudent = (student) => {
+    setConfirmModal({
+      show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
+      onConfirm: async () => {
+        setIsLoading(true);
+        try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제됨.'); } 
+        catch(err) { alertMessage('오류: ' + err.message); } 
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
+      }
+    });
+  };
+
+  const handleTagKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
+      if (val && !newQuestion.tags.includes(val)) setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
     }
   };
+  const removeTag = (tagToRemove) => setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
+
+  const handleQuestionImageChange = (e) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
+  };
+  const handleDropQuestion = (e) => {
+    e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) setNewQuestion(prev => ({ ...prev, images: [...prev.images, ...files], imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] }));
+  };
+  const removeQuestionPreview = (index) => setNewQuestion(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index), imagePreviews: prev.imagePreviews.filter((_, i) => i !== index) }));
+
+  const handleAddQuestion = async (e) => {
+    e.preventDefault();
+    if (!newQuestion.title.trim() || newQuestion.tags.length === 0 || newQuestion.images.length === 0) return alertMessage('타이틀, 해시태그, 이미지를 등록해주세요!');
+    setIsLoading(true);
+    try {
+      const uploadedImageUrls = [];
+      for (const file of newQuestion.images) { uploadedImageUrls.push(await uploadToCloudinary(file)); }
+      const questionData = {
+        title: newQuestion.title, tags: newQuestion.tags, imageUrls: uploadedImageUrls,
+        createdAt: new Date().toISOString(), teacherName: currentUser.name, teacherId: currentUser.id,
+        isPinned: newQuestion.isPinned, isChallenge: newQuestion.isChallenge, isStudentQuestion: false
+      };
+      await addDoc(getColRef('questions'), questionData);
+      alertMessage('새로운 문제가 등록되었습니다!');
+      setNewQuestion({ title: '', tags: [], currentTagInput: '', images: [], imagePreviews: [], isPinned: false, isChallenge: false });
+    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleDeleteQuestionConfirm = (id) => {
+    setConfirmModal({
+      show: true, title: '기출문제 영구 삭제', message: '이 기출문제를 삭제하시겠습니까?', isDanger: true,
+      onConfirm: async () => {
+        setIsLoading(true);
+        try { await deleteDoc(doc(getColRef('questions'), id)); alertMessage('삭제되었습니다.'); } 
+        catch(err) { alertMessage('오류: ' + err.message); } 
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
+      }
+    });
+  };
+
+  const handleStudentAddQuestion = async (e) => {
+    e.preventDefault();
+    if (!studentNewQuestion.title.trim() || studentNewQuestion.images.length === 0) return alertMessage('질문 제목과 문제 이미지를 모두 등록해주세요!');
+    setIsLoading(true);
+    try {
+      const uploadedImageUrls = [];
+      for (const file of studentNewQuestion.images) { uploadedImageUrls.push(await uploadToCloudinary(file)); }
+      const questionData = {
+        title: studentNewQuestion.title, tags: ['질문있어요'], imageUrls: uploadedImageUrls,
+        createdAt: new Date().toISOString(), teacherName: currentUser.name, teacherId: currentUser.id,
+        isPinned: false, isChallenge: studentNewQuestion.isShared, isStudentQuestion: true
+      };
+      await addDoc(getColRef('questions'), questionData);
+      alertMessage('질문이 성공적으로 등록되었습니다!');
+      setStudentNewQuestion({ title: '', images: [], imagePreviews: [], isShared: true });
+      setStudentQuestionModal(false);
+    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleSubmitSolution = async (e) => {
+    e.preventDefault();
+    if (!studentSolutionImage) return alertMessage('풀이 이미지를 첨부해주세요!');
+    setIsLoading(true);
+    try {
+      const downloadUrl = await uploadToCloudinary(studentSolutionImage);
+      const existingSub = submissions.find(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id);
+
+      if (existingSub) {
+        const oldAttempts = existingSub.attempts || [{ 
+          imageUrl: existingSub.imageUrl, feedbackText: existingSub.feedbackText || '', 
+          feedbackImageUrl: existingSub.feedbackImageUrl || '', submittedAt: existingSub.submittedAt 
+        }];
+        const newAttempt = { imageUrl: downloadUrl, submittedAt: new Date().toISOString(), feedbackText: '', feedbackImageUrl: '' };
+        await updateDoc(doc(getColRef('submissions'), existingSub.id), {
+          attempts: [...oldAttempts, newAttempt], imageUrl: downloadUrl, status: '피드백 대기', feedbackText: '', feedbackImageUrl: '', submittedAt: new Date().toISOString()
+        });
+        alertMessage('새로운 풀이(회차)가 추가로 제출되었습니다!');
+      } else {
+        const newSubmission = {
+          questionId: selectedQuestion.id, studentId: currentUser.id, studentName: currentUser.name,
+          submittedAt: new Date().toISOString(), imageUrl: downloadUrl, status: '피드백 대기',
+          feedbackImageUrl: '', feedbackText: '', feedbackAt: '',
+          isShared: selectedQuestion.isChallenge ? isSharedChecked : false, peerComments: [],
+          attempts: [{ imageUrl: downloadUrl, submittedAt: new Date().toISOString(), feedbackText: '', feedbackImageUrl: '' }]
+        };
+        await addDoc(getColRef('submissions'), newSubmission);
+        alertMessage('성공적으로 제출되었습니다!');
+      }
+      setStudentSolutionImage(null); setStudentSolutionPreview(''); setSelectedQuestion(null); setIsEditingSolution(false);
+    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleSaveFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    if (!feedbackInputText.trim() && !feedbackInputImage) return alertMessage('코멘트나 첨삭 이미지 중 하나는 필수입니다.');
+    setIsLoading(true);
+    try {
+      const attempts = viewingSubmission.attempts || [{ imageUrl: viewingSubmission.imageUrl, feedbackText: viewingSubmission.feedbackText, feedbackImageUrl: viewingSubmission.feedbackImageUrl, submittedAt: viewingSubmission.submittedAt }];
+      let finalFeedbackUrl = attempts[selectedAttemptIdx]?.feedbackImageUrl || '';
+      if (feedbackInputImage) { finalFeedbackUrl = await uploadToCloudinary(feedbackInputImage); }
+
+      attempts[selectedAttemptIdx].feedbackText = feedbackInputText;
+      attempts[selectedAttemptIdx].feedbackImageUrl = finalFeedbackUrl;
+      attempts[selectedAttemptIdx].feedbackAt = new Date().toISOString();
+
+      let topLevelUpdates = {};
+      if (selectedAttemptIdx === attempts.length - 1) {
+        topLevelUpdates = { feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: attempts[selectedAttemptIdx].feedbackAt, status: '피드백 완료' };
+      }
+
+      await updateDoc(doc(getColRef('submissions'), activeFeedbackSubmissionId), { attempts: attempts, ...topLevelUpdates });
+      alertMessage('첨삭 피드백 전달 완료!');
+      setViewingSubmission(null); setSelectedQuestion(null); setActiveFeedbackSubmissionId(null);
+      setFeedbackInputText(''); setFeedbackInputImage(null); setFeedbackInputImagePreview('');
+    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+  };
+
+  const handlePeerCommentSubmit = async (e, targetSubId) => {
+    e.preventDefault();
+    if (!peerCommentInput.trim() && !peerCommentImage) return; 
+    setIsLoading(true);
+    try {
+      let imgUrl = '';
+      if (peerCommentImage) { imgUrl = await uploadToCloudinary(peerCommentImage); }
+      const targetSub = submissions.find(s => s.id === targetSubId);
+      const newComment = { id: `c-${Date.now()}`, authorName: currentUser.name, text: peerCommentInput, imageUrl: imgUrl, createdAt: new Date().toISOString() };
+      
+      await updateDoc(doc(getColRef('submissions'), targetSubId), { peerComments: [...(targetSub?.peerComments || []), newComment] });
+      setPeerCommentInput(''); setPeerCommentImage(null); setPeerCommentImagePreview('');
+      alertMessage('답변/댓글 등록 완료!');
+    } catch (err) { alertMessage(err.message); } finally { setIsLoading(false); }
+  };
+
+  // =========================================================================
 
   const filteredStudentQuestions = questions.filter(q => {
     const query = studentQuestionSearch.trim().toLowerCase();
@@ -884,7 +1004,7 @@ export default function App() {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (입력 후 Space/Enter)</label>
                       <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
-                        {newQuestion.tags.map((tag) => (
+                        {newQuestion.tags.map((/** @type {string} */ tag) => (
                           <span key={tag} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">#{tag} <button type="button" onClick={()=>removeTag(tag)}>✕</button></span>
                         ))}
                         <input type="text" value={newQuestion.currentTagInput} onChange={e => setNewQuestion({...newQuestion, currentTagInput: e.target.value})} onKeyDown={handleTagKeyDown} className="flex-1 outline-none text-sm min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" placeholder="태그 추가..." />
@@ -1021,7 +1141,7 @@ export default function App() {
                     <button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md text-sm transition-all">일괄 등록 완료</button>
                   </div>
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold p-3.5 rounded-xl mb-4 flex items-start gap-2">
-                    <span className="text-lg leading-none">💡</span> <span>엑셀처럼 여러 명의 학생 정보를 표에 바로 입력하고 [일괄 등록 완료] 버튼을 눌러 한 번에 추가하세요. (초기 비밀번호: 123456)</span>
+                    <span className="text-lg leading-none">💡</span> <span>엑셀처럼 여러 명의 학생 정보를 표에 바로 입력하고 [일괄 등록 완료] 버튼을 눌러 한 번 정식 가입시키고 관리할 수 있습니다. (초기 비밀번호: 123456)</span>
                   </div>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50">
                     <table className="w-full text-left text-xs border-collapse">
@@ -1514,10 +1634,155 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
+      {editQuestionModal && editingQuestion && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
+            <div className="flex justify-between items-center mb-5 border-b pb-3">
+              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
+                <Edit className="text-indigo-600" size={20}/>
+                <span>문제 세트 수정</span>
+                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
+              </h3>
+              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
+            </div>
+
+            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
+                <input 
+                  type="text" 
+                  value={editingQuestion.title} 
+                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="예: 수능 기출 22번" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
+                  {editingQuestion.tags.map((tag) => (
+                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      #{tag} 
+                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
+                    </span>
+                  ))}
+                  <input 
+                    type="text" 
+                    value={editingQuestion.currentTagInput} 
+                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault(); 
+                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
+                        if (val && !editingQuestion.tags.includes(val)) {
+                          setEditingQuestion({
+                            ...editingQuestion, 
+                            tags: [...editingQuestion.tags, val], 
+                            currentTagInput: ''
+                          });
+                        }
+                      }
+                    }} 
+                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
+                    placeholder="태그 추가..." 
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isPinned} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editingQuestion.isChallenge} 
+                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  /> 
+                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
+                <div 
+                  onDragOver={e => e.preventDefault()} 
+                  onDrop={(e) => {
+                    e.preventDefault(); 
+                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length > 0) {
+                      setEditingQuestion(prev => ({
+                        ...prev,
+                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                      }));
+                    }
+                  }} 
+                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
+                >
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {editingQuestion.items.map((item, idx) => (
+                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
+                        <button 
+                          type="button" 
+                          onClick={() => setEditingQuestion({
+                            ...editingQuestion,
+                            items: editingQuestion.items.filter((_, i) => i !== idx)
+                          })} 
+                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
+                        >
+                          <X size={10}/>
+                        </button>
+                      </div>
+                    ))}
+                    
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
+                      <Plus size={16} className="text-indigo-500" />
+                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
+                      <input 
+                        type="file" 
+                        multiple 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const files = e.target.files ? Array.from(e.target.files) : [];
+                          if (files.length > 0) {
+                            setEditingQuestion(prev => ({
+                              ...prev,
+                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
+                            }));
+                          }
+                        }} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 
-  // 💡 수정됨: renderQuestionCard를 App 함수 내부 스코프로 이동
   function renderQuestionCard(q, isHighlight) {
     const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
     return (
