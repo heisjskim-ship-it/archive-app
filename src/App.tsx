@@ -1514,162 +1514,17 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
-      {editQuestionModal && editingQuestion && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
-            <div className="flex justify-between items-center mb-5 border-b pb-3">
-              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
-                <Edit className="text-indigo-600" size={20}/>
-                <span>문제 세트 수정</span>
-                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
-              </h3>
-              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
-            </div>
-
-            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
-                <input 
-                  type="text" 
-                  value={editingQuestion.title} 
-                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
-                  placeholder="예: 수능 기출 22번" 
-                  required 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
-                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
-                  {editingQuestion.tags.map((tag) => (
-                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      #{tag} 
-                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
-                    </span>
-                  ))}
-                  <input 
-                    type="text" 
-                    value={editingQuestion.currentTagInput} 
-                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault(); 
-                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
-                        if (val && !editingQuestion.tags.includes(val)) {
-                          setEditingQuestion({
-                            ...editingQuestion, 
-                            tags: [...editingQuestion.tags, val], 
-                            currentTagInput: ''
-                          });
-                        }
-                      }
-                    }} 
-                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
-                    placeholder="태그 추가..." 
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isPinned} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isChallenge} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
-                <div 
-                  onDragOver={e => e.preventDefault()} 
-                  onDrop={(e) => {
-                    e.preventDefault(); 
-                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-                    if (files.length > 0) {
-                      setEditingQuestion(prev => ({
-                        ...prev,
-                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                      }));
-                    }
-                  }} 
-                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
-                >
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {editingQuestion.items.map((item, idx) => (
-                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
-                        <button 
-                          type="button" 
-                          onClick={() => setEditingQuestion({
-                            ...editingQuestion,
-                            items: editingQuestion.items.filter((_, i) => i !== idx)
-                          })} 
-                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
-                        >
-                          <X size={10}/>
-                        </button>
-                      </div>
-                    ))}
-                    
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
-                      <Plus size={16} className="text-indigo-500" />
-                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
-                      <input 
-                        type="file" 
-                        multiple 
-                        accept="image/*" 
-                        onChange={(e) => {
-                          const files = e.target.files ? Array.from(e.target.files) : [];
-                          if (files.length > 0) {
-                            setEditingQuestion(prev => ({
-                              ...prev,
-                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                            }));
-                          }
-                        }} 
-                        className="hidden" 
-                      />
-                    </label>
-                  </div>
-                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 pt-3">
-                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
-}
 
-function renderQuestionCard(q, isHighlight) {
-  const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
-  return (
-    <div key={q.id} onClick={() => { if(!currentUser) { setAuthModal({show:true, mode:'student_login'}); alertMessage('로그인이 필요합니다!'); return; } setSelectedQuestion(q); }} className={`bg-white rounded-3xl overflow-hidden border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer group flex flex-col h-full ${isHighlight ? 'border-amber-300 ring-4 ring-amber-500/10 shadow-lg' : 'border-slate-200 shadow-sm'}`}>
-      <div className="relative h-44 bg-slate-100 overflow-hidden shrink-0"><img src={q.imageUrls[0]} alt={q.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4"><span className="bg-white/95 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow flex items-center gap-1.5"><Eye size={14} /> 풀기 및 확인</span></div><div className="absolute top-3 left-3 flex flex-wrap gap-1 z-10 max-w-[80%]">{q.isPinned && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Pin size={10}/>공지</span>}{q.isChallenge && !q.tags.includes('질문있어요') && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Trophy size={10}/>챌린지</span>}{q.tags.includes('질문있어요') && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><MessageCircle size={10}/>질문</span>}{q.imageUrls.length > 1 && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">+{q.imageUrls.length - 1}장</span>}</div>{isSolved && <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-md z-10"><Check size={12} strokeWidth={3}/>제출완료</div>}</div>
-      <div className="p-4 flex flex-col justify-between flex-1"><div><h4 className="font-extrabold text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{q.title}</h4><div className="flex flex-wrap gap-1">{q.tags.slice(0,3).map((tag, idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}</div></div><div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between"><span className="text-[10px] font-semibold text-slate-400">{q.teacherName} {q.isStudentQuestion ? '학생' : '선생님'}</span><ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500" /></div></div>
-    </div>
-  );
+  // 💡 수정됨: renderQuestionCard를 App 함수 내부 스코프로 이동
+  function renderQuestionCard(q, isHighlight) {
+    const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
+    return (
+      <div key={q.id} onClick={() => { if(!currentUser) { setAuthModal({show:true, mode:'student_login'}); alertMessage('로그인이 필요합니다!'); return; } setSelectedQuestion(q); }} className={`bg-white rounded-3xl overflow-hidden border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer group flex flex-col h-full ${isHighlight ? 'border-amber-300 ring-4 ring-amber-500/10 shadow-lg' : 'border-slate-200 shadow-sm'}`}>
+        <div className="relative h-44 bg-slate-100 overflow-hidden shrink-0"><img src={q.imageUrls[0]} alt={q.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4"><span className="bg-white/95 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow flex items-center gap-1.5"><Eye size={14} /> 풀기 및 확인</span></div><div className="absolute top-3 left-3 flex flex-wrap gap-1 z-10 max-w-[80%]">{q.isPinned && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Pin size={10}/>공지</span>}{q.isChallenge && !q.tags.includes('질문있어요') && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><Trophy size={10}/>챌린지</span>}{q.tags.includes('질문있어요') && <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-0.5"><MessageCircle size={10}/>질문</span>}{q.imageUrls.length > 1 && <span className="bg-slate-800 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">+{q.imageUrls.length - 1}장</span>}</div>{isSolved && <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-md z-10"><Check size={12} strokeWidth={3}/>제출완료</div>}</div>
+        <div className="p-4 flex flex-col justify-between flex-1"><div><h4 className="font-extrabold text-slate-800 text-sm leading-tight mb-2 line-clamp-2">{q.title}</h4><div className="flex flex-wrap gap-1">{q.tags.slice(0,3).map((tag, idx) => <span key={idx} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">#{tag}</span>)}</div></div><div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between"><span className="text-[10px] font-semibold text-slate-400">{q.teacherName} {q.isStudentQuestion ? '학생' : '선생님'}</span><ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500" /></div></div>
+      </div>
+    );
+  }
 }
