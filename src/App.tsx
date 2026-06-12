@@ -358,7 +358,7 @@ export default function App() {
   }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal, editQuestionModal, editingQuestion]);
 
   // =========================================================================
-  // 💡 누락되었던 핵심 데이터 제어(Handler) 함수들 완벽 복구
+  // 💡 데이터 제어(Handler) 함수들
   // =========================================================================
 
   const generateEmail = (username) => `${username}@archive.edu`;
@@ -531,14 +531,6 @@ export default function App() {
         finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
-  };
-
-  const openEditQuestionModal = (q) => {
-    setEditingQuestion({
-      id: q.id, title: q.title, tags: q.tags || [], currentTagInput: '', isPinned: q.isPinned || false, isChallenge: q.isChallenge || false,
-      isStudentQuestion: q.isStudentQuestion || false, items: q.imageUrls.map(url => ({ url, file: null })) 
-    });
-    setEditQuestionModal(true);
   };
 
   const handleUpdateQuestionSubmit = async (e) => {
@@ -881,7 +873,7 @@ export default function App() {
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                 <h4 className="font-bold text-xs text-indigo-600 flex items-center gap-1.5 mb-2">🍎 아이폰 (Safari 사파리 브라우저)</h4>
                 <ol className="list-decimal pl-4 text-xs font-semibold text-slate-600 space-y-1">
-                  <li>Safari 브라우저 하단 중앙의 <b className="text-slate-900 bg-slate-200 px-1 py-0.5 rounded">공유(내보내기 📤)</b> 버튼을 탭합니다.</li>
+                  <li>Safari 브라우저 하단 중앙 of the <b className="text-slate-900 bg-slate-200 px-1 py-0.5 rounded">공유(내보내기 📤)</b> 버튼을 탭합니다.</li>
                   <li>메뉴 목록을 아래로 스크롤하여 <b className="text-slate-900">홈 화면에 추가 (+)</b>를 선택합니다.</li>
                   <li>우측 상단 <b className="text-indigo-600">추가</b>를 누르면 설치가 완료됩니다!</li>
                 </ol>
@@ -1004,7 +996,7 @@ export default function App() {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (입력 후 Space/Enter)</label>
                       <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
-                        {newQuestion.tags.map((/** @type {string} */ tag) => (
+                        {newQuestion.tags.map((tag) => (
                           <span key={tag} className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">#{tag} <button type="button" onClick={()=>removeTag(tag)}>✕</button></span>
                         ))}
                         <input type="text" value={newQuestion.currentTagInput} onChange={e => setNewQuestion({...newQuestion, currentTagInput: e.target.value})} onKeyDown={handleTagKeyDown} className="flex-1 outline-none text-sm min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" placeholder="태그 추가..." />
@@ -1139,9 +1131,6 @@ export default function App() {
                       <h3 className="font-bold text-lg text-slate-900">학생 등록</h3>
                     </div>
                     <button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md text-sm transition-all">일괄 등록 완료</button>
-                  </div>
-                  <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold p-3.5 rounded-xl mb-4 flex items-start gap-2">
-                    <span className="text-lg leading-none">💡</span> <span>엑셀처럼 여러 명의 학생 정보를 표에 바로 입력하고 [일괄 등록 완료] 버튼을 눌러 한 번 정식 가입시키고 관리할 수 있습니다. (초기 비밀번호: 123456)</span>
                   </div>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50">
                     <table className="w-full text-left text-xs border-collapse">
@@ -1571,7 +1560,7 @@ export default function App() {
                           {isMy && isLatest && !isEditingSolution && <button onClick={() => setIsEditingSolution(true)} className="w-full py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl border border-indigo-200 transition-colors shrink-0">✏️ 다시 풀어서 제출하기 (이전 기록 보존)</button>}
                           {isEditingSolution && (
                             <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl shrink-0 animate-fade-in">
-                              <div className="flex justify-between items-center mb-3"><h4 className="font-extrabold text-sm text-indigo-900">추가 풀이 업로드 ({attempts.length + 1}회차)</h4><button onClick={() => { setIsEditingSolution(false); setStudentSolutionPreview(''); setStudentSolutionImage(null); }} className="text-slate-400 hover:text-slate-600 bg-white p-1 rounded-full shadow-sm"><X size={14}/></button></div>
+                              <div className="flex justify-between items-center mb-3"><h4 className="font-extrabold text-sm text-indigo-950">추가 풀이 업로드 ({attempts.length + 1}회차)</h4><button onClick={() => { setIsEditingSolution(false); setStudentSolutionPreview(''); setStudentSolutionImage(null); }} className="text-slate-400 hover:text-slate-600 bg-white p-1 rounded-full shadow-sm"><X size={14}/></button></div>
                               <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-start gap-2 mb-3"><span className="bg-amber-100 p-1.5 rounded-full shrink-0"><Sparkles size={12} className="text-amber-600" /></span><div><h5 className="font-bold text-amber-900 text-[11px] mb-0.5">선생님의 당부 ✍️</h5><p className="text-[10px] text-amber-800 font-medium leading-tight">눈으로만 보지 말고, 백지에 정성껏 다시 푼 새로운 풀이 과정을 사진으로 찍어 올려주세요!</p></div></div>
                               <div className="border-2 border-dashed border-indigo-200 rounded-xl p-4 text-center bg-white mb-3 cursor-pointer">
                                 {studentSolutionPreview ? (
@@ -1777,6 +1766,15 @@ export default function App() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* 💡 라이트박스 모달을 가장 하단으로 이동하여 스택 컨텍스트(Stacking Context) 버그 해결 */}
+      {lightbox.show && (
+        <div onClick={() => setLightbox({ show: false, imageUrl: '', title: '' })} className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-[100] cursor-zoom-out">
+          <button className="absolute top-5 right-5 text-white bg-slate-800 px-3 py-1.5 rounded-full font-bold text-xs">✕ 닫기</button>
+          <img src={lightbox.imageUrl} alt="확대" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border-4 border-slate-800/50" />
+          <div className="mt-4 text-center"><p className="text-white font-extrabold text-base">{lightbox.title}</p></div>
         </div>
       )}
 
