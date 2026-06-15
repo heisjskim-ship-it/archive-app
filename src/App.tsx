@@ -1013,62 +1013,77 @@ export default function App() {
               )}
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4">
-              <div className="relative w-full flex-1">
-                <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
-                <input type="text" value={studentQuestionSearch} onChange={e => setStudentQuestionSearch(e.target.value)} placeholder="과목, 단원 등 해시태그 검색..." className="w-full pl-9 pr-8 py-2 text-sm rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              {currentUser?.role === 'student' && (
-                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
-                  <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>전체 탐색</button>
-                  <button onClick={() => setActiveTab('my')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>내 오답노트</button>
-                </div>
-              )}
-            </div>
-
-            {activeTab === 'all' && rankingData.length > 0 && (
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆</h3>
-                <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
-                  {rankingData.map((student, idx) => (
-                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors shadow-sm">
-                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-amber-500">1위 🥇</span>}
-                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-slate-400">2위 🥈</span>}
-                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-amber-700">3위 🥉</span>}
-                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-slate-300">{idx + 1}위</span>}
-                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner border border-indigo-200"><span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span></div>
-                      <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
-                      <span className="text-xs font-black text-indigo-600 mt-1 bg-indigo-50 px-2 py-0.5 rounded-md">{student.totalScore}점</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-8">
-              {activeTab === 'all' && pinnedQuestions.length > 0 && (
-                <div>
-                  <h3 className="font-extrabold text-lg flex items-center gap-2 mb-4 pl-2"><Pin className="text-amber-500 fill-amber-500" size={20}/> 공지 및 챌린지</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {pinnedQuestions.map(q => renderQuestionCard(q, true))}
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
+              {/* 왼쪽 메인 영역: 검색창 및 문제 리스트 */}
+              <div className="flex-1 w-full space-y-6">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4">
+                  <div className="relative w-full flex-1">
+                    <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                    <input type="text" value={studentQuestionSearch} onChange={e => setStudentQuestionSearch(e.target.value)} placeholder="과목, 단원 등 해시태그 검색..." className="w-full pl-9 pr-8 py-2 text-sm rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none" />
                   </div>
-                </div>
-              )}
-              <div>
-                <div className="flex justify-between items-center mb-4 pl-2">
-                  <h3 className="font-extrabold text-lg flex items-center gap-2"><BookOpen className="text-indigo-600" size={20}/> 전체 아카이브</h3>
                   {currentUser?.role === 'student' && (
-                    <button onClick={() => setStudentQuestionModal(true)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-md transition-colors"><Sparkles size={14} className="inline mr-1"/> 나도 질문하기</button>
+                    <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+                      <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>전체 탐색</button>
+                      <button onClick={() => setActiveTab('my')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>내 오답노트</button>
+                    </div>
                   )}
                 </div>
-                {regularQuestions.length === 0 ? (
-                  <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-2xl border shadow-sm flex flex-col items-center gap-3"><Search size={40} className="opacity-20"/> <p>결과가 없습니다.</p></div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {regularQuestions.map(q => renderQuestionCard(q, false))}
+
+                <div className="space-y-8">
+                  {activeTab === 'all' && pinnedQuestions.length > 0 && (
+                    <div>
+                      <h3 className="font-extrabold text-lg flex items-center gap-2 mb-4 pl-2"><Pin className="text-amber-500 fill-amber-500" size={20}/> 공지 및 챌린지</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {pinnedQuestions.map(q => renderQuestionCard(q, true))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex justify-between items-center mb-4 pl-2">
+                      <h3 className="font-extrabold text-lg flex items-center gap-2"><BookOpen className="text-indigo-600" size={20}/> 전체 아카이브</h3>
+                      {currentUser?.role === 'student' && (
+                        <button onClick={() => setStudentQuestionModal(true)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-md transition-colors"><Sparkles size={14} className="inline mr-1"/> 나도 질문하기</button>
+                      )}
+                    </div>
+                    {regularQuestions.length === 0 ? (
+                      <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-2xl border shadow-sm flex flex-col items-center gap-3"><Search size={40} className="opacity-20"/> <p>결과가 없습니다.</p></div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {regularQuestions.map(q => renderQuestionCard(q, false))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
+
+              {/* 오른쪽 사이드바 영역: 이달의 열공 랭킹 컴팩트 리스트 */}
+              {activeTab === 'all' && rankingData.length > 0 && (
+                <div className="w-full lg:w-72 xl:w-80 shrink-0">
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 sticky top-20">
+                    <h3 className="font-extrabold text-base text-slate-900 mb-4 flex items-center gap-2"><Award className="text-amber-500" size={20}/> 이달의 열공 랭킹</h3>
+                    <div className="flex flex-col gap-2.5">
+                      {rankingData.map((student, idx) => (
+                        <div key={student.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-amber-200 transition-colors shadow-sm">
+                          <div className="relative flex-shrink-0 flex items-center justify-center w-8 h-8">
+                            {idx === 0 && <span className="absolute inset-0 bg-amber-400 rounded-full shadow-inner"></span>}
+                            {idx === 1 && <span className="absolute inset-0 bg-slate-300 rounded-full shadow-inner"></span>}
+                            {idx === 2 && <span className="absolute inset-0 bg-amber-600 rounded-full shadow-inner"></span>}
+                            {idx > 2 && <span className="absolute inset-0 bg-slate-200 rounded-full shadow-inner"></span>}
+                            <span className={`relative z-10 text-[11px] font-black ${idx <= 2 ? 'text-white' : 'text-slate-500'}`}>{idx + 1}위</span>
+                          </div>
+                          <div className="flex-1 min-w-0 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center font-bold text-indigo-600 text-[10px] shrink-0">{anonymizeName(student.name)[0]}</div>
+                              <span className="font-bold text-slate-800 text-sm truncate">{anonymizeName(student.name)}</span>
+                            </div>
+                            <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">{student.totalScore}점</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
