@@ -201,7 +201,7 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null); 
   const [currentUser, setCurrentUser] = useState<UserData | null>(null); 
   const [isLoading, setIsLoading] = useState<boolean>(false); 
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true); // 💡 새로고침 대응용 로딩
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true); // 새로고침 대응용 로딩
 
   const [authModal, setAuthModal] = useState<{ show: boolean; mode: 'student_login' | 'student_register' | 'teacher_login' | 'teacher_register' }>({ show: false, mode: 'student_login' }); 
   const [loginIdInput, setLoginIdInput] = useState<string>('');
@@ -211,7 +211,7 @@ export default function App() {
   const [signUpId, setSignUpId] = useState<string>('');
   const [signUpPw, setSignUpPw] = useState<string>('');
   
-  // 💡 자동 로그인 유지 상태 제어
+  // 자동 로그인 유지 상태 제어
   const [keepLoggedIn, setKeepLoggedIn] = useState<boolean>(true);
 
   const [tutorial, setTutorial] = useState<{ show: boolean; role: string; step: number }>({ show: false, role: '', step: 0 });
@@ -421,9 +421,11 @@ export default function App() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal, editQuestionModal, editingQuestion]);
 
-  // =========================================================================
+  // ==============================================
   // 💡 데이터 제어(Handler) 함수들
-  // =========================================================================
+  // ==============================================
+
+  const generateEmail = (username: string) => `${username}@archive.edu`;
 
   const handleStudentSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -474,6 +476,116 @@ export default function App() {
     } finally { 
       setIsLoading(false); 
     }
+  };
+
+  // 💡 4번 에러 원천 차단: handleLogout 함수 정상 매핑
+  const handleLogout = async () => {
+    setIsLoading(true);
+    try {
+      await signOut(auth);
+      setCurrentUser(null); 
+      setStudentQuestionSearch(''); 
+      setSubmissionSearch(''); 
+      setTeacherQuestionSearch(''); 
+      setTeacherSubTab('content'); 
+      setViewingSubmission(null); 
+      setSelectedQuestion(null);
+      alertMessage('안전하게 로그아웃되었습니다.');
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      setIsLoading(false); 
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginIdInput.trim() || !loginPwInput.trim()) return alertMessage('아이디와 비밀번호를 입력해 주세요.');
+    setIsLoading(true);
+    try {
+      await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+
+      if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
+        setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
+        setAuthModal({ show: false, mode: 'student_login' }); 
+        alertMessage('최고 관리자 모드로 로그인했습니다. 교사 임용 및 회원 관리가 가능합니다. 👑'); 
+        return;
+      }
+      
+      const userCredential = await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
+      const userDocRef = doc(getColRef('users'), userCredential.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as UserData;
+        if (userData.role === 'pending_teacher') {
+          await signOut(auth);
+          throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 계정입니다. 승인 후 다시 시도해 주세요!');
+        }
+        if (authModal.mode === 'teacher_login' && userData.role !== 'teacher') {
+          await signOut(auth);
+          throw new Error('교사 권한이 없는 계정입니다.');
+        }
+        if (authModal.mode === 'student_login' && userData.role !== 'student') {
+          await signOut(auth);
+          throw new Error('학생 권한이 없는 계정입니다.');
+        }
+
+        await updateDoc(userDocRef, { loginCount: (userData.loginCount || 0) + 1 });
+        setCurrentUser({ id: userCredential.user.uid, ...userData, loginCount: (userData.loginCount || 0) + 1 });
+        setAuthModal({ show: false, mode: 'student_login' });
+        
+        if (userData.role === 'student' && !userData.hasSeenTutorial) {
+          setTutorial({ show: true, role: 'student', step: 0 });
+        } else {
+          alertMessage('반가워요, ' + userData.name + (userData.role === 'teacher' ? ' 선생님!' : ' 학생!'));
+        }
+      } else {
+        throw new Error('회원 정보가 없습니다.');
+      }
+    } catch (error: any) { 
+      alertMessage(error.message || '아이디 또는 비밀번호 오류입니다.'); 
+    } finally { 
+      setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); 
+    }
+  };
+
+  const completeTutorial = async () => {
+    if (tutorial.role === 'student' && currentUser && currentUser.id !== 'teacher_admin') {
+      await updateDoc(doc(getColRef('users'), currentUser.id), { hasSeenTutorial: true });
+      alertMessage('튜토리얼을 마쳤습니다. 자유롭게 학습하세요!');
+    } else { alertMessage('튜토리얼 완료!'); }
+    setTutorial({ show: false, role: '', step: 0 });
+  };
+
+  const handleDraftChange = (rowId: number, field: keyof DraftStudent, value: string) => {
+    setDraftStudents(draftStudents.map(row => row.rowId === rowId ? { ...row, [field]: value } : row));
+  };
+  const handleAddDraftRow = () => setDraftStudents([...draftStudents, { rowId: Date.now(), no: '', name: '', username: '' }]);
+  const handleRemoveDraftRow = (rowId: number) => {
+    if (draftStudents.length === 1) return alertMessage('최소 1줄은 필요합니다.');
+    setDraftStudents(draftStudents.filter(row => row.rowId !== rowId));
+  };
+
+  const handleSaveDraftStudents = async () => {
+    const validRows = draftStudents.filter(row => row.no.trim() || row.name.trim() || row.username.trim());
+    if (validRows.length === 0) return alertMessage('등록할 학생 정보를 1명 이상 입력해주세요.');
+    setIsLoading(true);
+    let successCount = 0;
+    for (const row of validRows) {
+      if (!row.no.trim() || !row.name.trim() || !row.username.trim()) { alertMessage('행의 빈칸을 모두 채워주세요.'); setIsLoading(false); return; }
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, generateEmail(row.username.trim()), '123456');
+        await setDoc(doc(getColRef('users'), userCred.user.uid), {
+          role: 'student', studentNumber: row.no.trim(), name: row.name.trim(), username: row.username.trim(),
+          joinDate: new Date().toISOString().split('T')[0], loginCount: 0, status: '활동중', hasSeenTutorial: false
+        });
+        successCount++;
+      } catch (err) { console.error("다중 등록 에러", err); }
+    }
+    setIsLoading(false);
+    alertMessage('총 ' + successCount + '명 등록 완료 (초기비번 123456)');
+    setDraftStudents([{ rowId: 1, no: '', name: '', username: '' }, { rowId: 2, no: '', name: '', username: '' }]);
   };
 
   const handleApproveTeacher = async (teacher: UserData) => {
@@ -544,35 +656,13 @@ export default function App() {
     });
   };
 
-  const handleDraftChange = (rowId: number, field: keyof DraftStudent, value: string) => {
-    setDraftStudents(draftStudents.map(row => row.rowId === rowId ? { ...row, [field]: value } : row));
-  };
-  const handleAddDraftRow = () => setDraftStudents([...draftStudents, { rowId: Date.now(), no: '', name: '', username: '' }]);
-  const handleRemoveDraftRow = (rowId: number) => {
-    if (draftStudents.length === 1) return alertMessage('최소 1줄은 필요합니다.');
-    setDraftStudents(draftStudents.filter(row => row.rowId !== rowId));
-  };
-
-  const handleSaveDraftStudents = async () => {
-    const validRows = draftStudents.filter(row => row.no.trim() || row.name.trim() || row.username.trim());
-    if (validRows.length === 0) return alertMessage('등록할 학생 정보를 1명 이상 입력해주세요.');
-    setIsLoading(true);
-    let successCount = 0;
-    for (const row of validRows) {
-      if (!row.no.trim() || !row.name.trim() || !row.username.trim()) { alertMessage('행의 빈칸을 모두 채워주세요.'); setIsLoading(false); return; }
-      try {
-        const userCred = await createUserWithEmailAndPassword(auth, generateEmail(row.username.trim()), '123456');
-        await setDoc(doc(getColRef('users'), userCred.user.uid), {
-          role: 'student', studentNumber: row.no.trim(), name: row.name.trim(), username: row.username.trim(),
-          joinDate: new Date().toISOString().split('T')[0], loginCount: 0, status: '활동중', hasSeenTutorial: false
-        });
-        successCount++;
-      } catch (err) { console.error("다중 등록 에러", err); }
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
+      if (val && !newQuestion.tags.includes(val)) setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
     }
-    setIsLoading(false);
-    alertMessage('총 ' + successCount + '명 등록 완료 (초기비번 123456)');
-    setDraftStudents([{ rowId: 1, no: '', name: '', username: '' }, { rowId: 2, no: '', name: '', username: '' }]);
   };
+  const removeTag = (tagToRemove: string) => setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
 
   const handleQuestionImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
@@ -612,6 +702,25 @@ export default function App() {
         finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
+  };
+
+  const handleStudentAddQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (studentNewQuestion.tags.length === 0) return alertMessage('해시태그를 최소 1개 이상 입력해 주세요!');
+    setIsLoading(true);
+    try {
+      const uploadedImageUrls = [];
+      for (const file of studentNewQuestion.images) { uploadedImageUrls.push(await uploadToCloudinary(file)); }
+      const questionData = {
+        title: studentNewQuestion.title, tags: studentNewQuestion.tags, imageUrls: uploadedImageUrls,
+        createdAt: new Date().toISOString(), teacherName: currentUser?.name || '학생', teacherId: currentUser?.id || '',
+        isPinned: false, isChallenge: studentNewQuestion.isShared, isStudentQuestion: true
+      };
+      await addDoc(getColRef('questions'), questionData);
+      alertMessage('질문이 성공적으로 등록되었습니다!');
+      setStudentNewQuestion({ title: '', tags: [], currentTagInput: '', images: [], imagePreviews: [], isShared: true });
+      setStudentQuestionModal(false);
+    } catch (err: any) { alertMessage(err.message); } finally { setIsLoading(false); }
   };
 
   const handleSubmitSolution = async (e: React.FormEvent) => {
@@ -767,6 +876,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative select-none">
+      
       {/* 💡 전역 커스텀 스크롤바 스타일시트 주입 */}
       <style>{`
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1534,7 +1644,7 @@ export default function App() {
                               <div className="flex flex-wrap gap-2 pb-4 mb-4 border-b border-slate-100 items-center">
                                 <span className="text-sm font-bold text-slate-500 flex items-center shrink-0 mr-1">풀이 회차:</span>
                                 {attempts.map((_, idx) => (
-                                  <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setFeedbackInputText(attempts[idx].feedbackText || ''); setFeedbackInputImagePreview(attempts[idx].feedbackImageUrl || ''); setFeedbackInputImage(null); }} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors shadow-sm ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-emerald-300'}`}>{idx + 1}회차 {idx === attempts.length - 1 && '(최신)'}</button>
+                                  <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setFeedbackInputText(attempts[idx].feedbackText || ''); setFeedbackInputImagePreview(attempts[idx].feedbackImageUrl || ''); setFeedbackInputImage(null); }} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors shadow-sm ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-emerald-300'}`}>{idx + 1; }회차 {idx === attempts.length - 1 && '(최신)'}</button>
                                 ))}
                               </div>
                             )}
