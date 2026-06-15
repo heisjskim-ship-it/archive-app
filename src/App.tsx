@@ -273,15 +273,24 @@ export default function App() {
     if (targetSub) setSelectedAttemptIdx(targetSub.attempts ? targetSub.attempts.length - 1 : 0); 
   }, [selectedQuestion?.id, viewingSubmission?.id, submissions.length]);
 
+  // 💡 붙여넣기 기능 완벽 보완 (방어적 e.preventDefault 포함)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       if(tutorial.show || isLoading) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       let imageFile: File | null = null;
-      for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf('image') !== -1) { imageFile = items[i].getAsFile(); break; } }
+      for (let i = 0; i < items.length; i++) { 
+        if (items[i].type.indexOf('image') !== -1) { 
+          imageFile = items[i].getAsFile(); 
+          break; 
+        } 
+      }
       if (!imageFile) return;
 
+      // 이미지일 경우에만 기본 텍스트 붙여넣기 동작 중단
+      e.preventDefault();
+      
       const preview = URL.createObjectURL(imageFile);
       if (studentQuestionModal) {
         setStudentNewQuestion(prev => ({ ...prev, images: [...prev.images, imageFile!], imagePreviews: [...prev.imagePreviews, preview] }));
@@ -302,6 +311,55 @@ export default function App() {
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, [selectedQuestion, currentUser, viewingSubmission, teacherSubTab, tutorial.show, isLoading, isEditingSolution, studentQuestionModal, editQuestionModal, editingQuestion]);
+
+  // ==============================================
+  // 💡 데이터 제어(Handler) 함수들 (Missing Handlers 완벽 복원)
+  // ==============================================
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); 
+      const val = newQuestion.currentTagInput.trim().replace(/^#/, '');
+      if (val && !newQuestion.tags.includes(val)) {
+        setNewQuestion({ ...newQuestion, tags: [...newQuestion.tags, val], currentTagInput: '' });
+      }
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setNewQuestion({ ...newQuestion, tags: newQuestion.tags.filter(t => t !== tagToRemove) });
+  };
+
+  const handleQuestionImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length > 0) {
+      setNewQuestion(prev => ({ 
+        ...prev, 
+        images: [...prev.images, ...files], 
+        imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] 
+      }));
+    }
+  };
+
+  const handleDropQuestion = (e: React.DragEvent) => {
+    e.preventDefault(); 
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) {
+      setNewQuestion(prev => ({ 
+        ...prev, 
+        images: [...prev.images, ...files], 
+        imagePreviews: [...prev.imagePreviews, ...files.map(f => URL.createObjectURL(f))] 
+      }));
+    }
+  };
+
+  const removeQuestionPreview = (index: number) => {
+    setNewQuestion(prev => ({ 
+      ...prev, 
+      images: prev.images.filter((_, i) => i !== index), 
+      imagePreviews: prev.imagePreviews.filter((_, i) => i !== index) 
+    }));
+  };
 
   const generateEmail = (username: string) => `${username}@archive.edu`;
 
@@ -579,7 +637,6 @@ export default function App() {
   const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
   const approvedTeachers = allUsers.filter(u => u.role === 'teacher' && u.id !== 'teacher_admin');
 
-  // 💡 수정됨: renderQuestionCard를 App 함수 스코프 내부로 안전하게 배치
   function renderQuestionCard(q: Question, isHighlight: boolean) {
     const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
     return (
@@ -709,64 +766,92 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <label className="flex items-center gap-2"><input type="checkbox" checked={newQuestion.isPinned} onChange={e => setNewQuestion({...newQuestion, isPinned: e.target.checked})} className="rounded text-emerald-600"/> <span className="text-xs font-bold">상단 고정</span></label>
-                      <label className="flex items-center gap-2"><input type="checkbox" checked={newQuestion.isChallenge} onChange={e => setNewQuestion({...newQuestion, isChallenge: e.target.checked})} className="rounded text-indigo-600"/> <span className="text-xs font-bold">공개 챌린지</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={newQuestion.isPinned} onChange={e => setNewQuestion({...newQuestion, isPinned: e.target.checked})} className="rounded text-emerald-600"/> <span className="text-xs font-bold text-slate-700">상단 고정</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={newQuestion.isChallenge} onChange={e => setNewQuestion({...newQuestion, isChallenge: e.target.checked})} className="rounded text-indigo-600"/> <span className="text-xs font-bold text-slate-700">공개 챌린지</span></label>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">이미지 업로드 (Ctrl+V)</label>
-                      <div onDragOver={e=>e.preventDefault()} onDrop={handleDropQuestion} className="border-2 border-dashed rounded-xl p-4 text-center">
+                      <div onDragOver={e=>e.preventDefault()} onDrop={handleDropQuestion} className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
                         {newQuestion.imagePreviews.length > 0 ? (
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             {newQuestion.imagePreviews.map((preview, idx) => (
-                              <div key={idx} className="relative group border rounded"><img src={preview} className="h-20 w-full object-cover rounded" onClick={()=>openLightbox(preview, '미리보기')}/><button type="button" onClick={()=>removeQuestionPreview(idx)} className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12}/></button></div>
+                              <div key={idx} className="relative group border border-slate-200 shadow-sm rounded-lg overflow-hidden bg-white"><img src={preview} className="h-20 w-full object-cover cursor-zoom-in" onClick={()=>openLightbox(preview, '미리보기')}/><button type="button" onClick={()=>removeQuestionPreview(idx)} className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"><X size={12}/></button></div>
                             ))}
-                            <label className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-300 rounded hover:bg-emerald-50 cursor-pointer min-h-[5rem]"><Plus size={20} className="text-emerald-500" /><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setNewQuestion(p=>({...p, images:[...p.images,...f], imagePreviews:[...p.imagePreviews,...f.map(fl=>URL.createObjectURL(fl))]}));}} className="hidden" /></label>
+                            <label className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-300 rounded-lg hover:bg-emerald-50 cursor-pointer min-h-[5rem] transition-colors"><Plus size={20} className="text-emerald-500" /><span className="text-[10px] font-bold text-emerald-600">추가</span><input type="file" multiple accept="image/*" onChange={handleQuestionImageChange} className="hidden" /></label>
                           </div>
                         ) : (
-                          <label className="cursor-pointer block py-4"><ImageIcon className="mx-auto text-slate-400 mb-2" size={24}/><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setNewQuestion(p=>({...p, images:[...p.images,...f], imagePreviews:[...p.imagePreviews,...f.map(fl=>URL.createObjectURL(fl))]}));}} className="hidden" /></label>
+                          <label className="cursor-pointer block py-4 hover:bg-slate-100 rounded-xl transition-colors"><ImageIcon className="mx-auto text-slate-400 mb-2" size={24}/><span className="text-xs font-bold text-emerald-600">클릭 또는 이미지 붙여넣기</span><input type="file" multiple accept="image/*" onChange={handleQuestionImageChange} className="hidden" /></label>
                         )}
                       </div>
                     </div>
-                    <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2"><Plus size={16}/> 등록하기</button>
+                    <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"><Plus size={16}/> 등록하기</button>
                   </form>
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="font-bold text-lg text-slate-900 mb-4">등록된 기출/질문 세트</h3>
-                    <div className="divide-y max-h-[200px] overflow-y-auto pr-1">
-                      {filteredTeacherQuestions.map(q => (
-                        <div key={q.id} className="py-2.5 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <img src={q.imageUrls[0]} className="w-10 h-10 object-cover rounded border cursor-zoom-in" onClick={()=>handleOpenQuestion(q.id)}/>
-                            <div>
-                              <div className="flex gap-1 mb-0.5">{q.isPinned && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded">고정</span>}{q.tags.includes('질문있어요') && <span className="text-[8px] bg-amber-500 text-white px-1 rounded">질문</span>}</div>
-                              <h4 className="text-xs font-bold hover:underline cursor-pointer" onClick={()=>handleOpenQuestion(q.id)}>{q.title}</h4>
+                    <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
+                      <span>등록된 기출/질문 세트</span>
+                      <div className="relative max-w-[180px] w-full">
+                        <Search className="absolute left-2.5 top-2 text-slate-400" size={14}/>
+                        <input type="text" value={teacherQuestionSearch} onChange={e => setTeacherQuestionSearch(e.target.value)} placeholder="제목, #태그 검색" className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                    </h3>
+                    <div className="divide-y divide-slate-100 max-h-[250px] overflow-y-auto pr-1">
+                      {filteredTeacherQuestions.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 text-xs font-bold">검색 결과가 없습니다.</div>
+                      ) : (
+                        filteredTeacherQuestions.map(q => (
+                          <div key={q.id} className="py-2.5 flex items-center justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors">
+                            <div className="flex items-center gap-3">
+                              <img src={q.imageUrls[0]} className="w-10 h-10 object-cover rounded border border-slate-200 shadow-sm cursor-zoom-in" onClick={()=>handleOpenQuestion(q.id)}/>
+                              <div>
+                                <div className="flex gap-1 mb-0.5">
+                                  {q.isPinned && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold">고정</span>}
+                                  {q.isChallenge && <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 rounded font-bold">챌린지</span>}
+                                  {q.tags.includes('질문있어요') && <span className="text-[8px] bg-amber-500 text-white px-1 rounded font-bold flex items-center gap-0.5"><MessageCircle size={8}/>질문</span>}
+                                  {q.imageUrls.length > 1 && <span className="text-[8px] bg-slate-100 text-slate-600 px-1 rounded font-bold border">{q.imageUrls.length}장</span>}
+                                </div>
+                                <h4 className="text-xs font-bold hover:underline cursor-pointer text-slate-800" onClick={()=>handleOpenQuestion(q.id)}>{q.title}</h4>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => openEditQuestionModal(q)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="수정하기"><Edit size={16}/></button>
+                              <button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="삭제하기"><Trash2 size={16}/></button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5"><button onClick={() => openEditQuestionModal(q)} className="p-1.5 text-slate-400 hover:text-indigo-600"><Edit size={16}/></button><button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button></div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   </div>
 
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between"><span>🚀 학급 활동 실시간 모니터링 센터</span><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full">Total: {dashboardItems.length}</span></h3>
-                    <div className="overflow-x-auto border rounded-xl">
-                      <table className="w-full text-left text-xs"><thead className="bg-slate-50 border-b"><tr><th className="p-3">활동</th><th className="p-3">학생명</th><th className="p-3">문항/질문 제목</th><th className="p-3 text-center">시간</th><th className="p-3 text-right">코칭</th></tr></thead>
-                        <tbody className="divide-y text-slate-700">
+                    <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
+                      <span>🚀 학급 활동 실시간 모니터링 센터</span>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">Total: {dashboardItems.length}</span>
+                        <input type="text" value={submissionSearch} onChange={e=>setSubmissionSearch(e.target.value)} placeholder="학생명, 검색" className="px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none w-28 md:w-36" />
+                      </div>
+                    </h3>
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr><th className="p-3 font-bold text-slate-600">활동</th><th className="p-3 font-bold text-slate-600">학생명</th><th className="p-3 font-bold text-slate-600">문항/질문 제목</th><th className="p-3 text-center font-bold text-slate-600">시간</th><th className="p-3 text-right font-bold text-slate-600">코칭</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700">
                           {dashboardItems.map(item => {
                             const matchedQuestion = questions.find(q => q.id === item.questionId);
                             return (
-                              <tr key={item.id} className="hover:bg-slate-50">
-                                <td className="p-3"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span></td>
-                                <td className="p-3 font-bold">{item.studentName}</td>
-                                <td className="p-3 truncate max-w-[150px]">{item.title || matchedQuestion?.title || '삭제된 문항'}</td>
-                                <td className="p-3 text-center font-mono text-slate-400">{formatDateTime(item.time)}</td>
-                                <td className="p-3 text-right"><button onClick={() => { if (item.type === 'ASK') handleOpenQuestion(item.id); else { setViewingSubmission(item as Submission); handleOpenQuestion(item.questionId); } }} className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white rounded text-[10px] font-bold">코칭 가기</button></td>
+                              <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-3"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] shadow-sm ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span></td>
+                                <td className="p-3 font-bold text-slate-800">{item.studentName}</td>
+                                <td className="p-3 truncate max-w-[150px] font-medium">{item.title || matchedQuestion?.title || '삭제된 문항'}</td>
+                                <td className="p-3 text-center font-mono text-[10px] text-slate-500">{formatDateTime(item.time)}</td>
+                                <td className="p-3 text-right"><button onClick={() => { if (item.type === 'ASK') handleOpenQuestion(item.id); else { setViewingSubmission(item as Submission); handleOpenQuestion(item.questionId); } }} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white rounded-lg text-[10px] font-bold transition-all shadow-sm">코칭 가기</button></td>
                               </tr>
                             );
                           })}
+                          {dashboardItems.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-bold">진행된 활동이 없습니다.</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -774,28 +859,61 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="bg-white p-6 rounded-2xl shadow-sm border space-y-6">
-                <div className="flex justify-between items-center"><h3 className="font-bold text-lg">학생 일괄 가입 등록</h3><button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm">일괄 등록 완료</button></div>
-                <div className="overflow-x-auto border rounded-xl"><table className="w-full text-left text-xs border-collapse"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3 text-center">No</th><th className="p-3">학번</th><th className="p-3">실명</th><th className="p-3">아이디 (ID)</th><th className="p-3 text-center">삭제</th></tr></thead><tbody className="divide-y">
-                  {draftStudents.map((row, index) => (
-                    <tr key={row.rowId}><td className="p-2 text-center text-slate-400 font-bold bg-slate-50">{index + 1}</td><td className="p-0 border-r border-slate-200"><input type="text" value={row.no} onChange={(e) => handleDraftChange(row.rowId, 'no', e.target.value)} className="w-full p-3 outline-none" placeholder="학번 입력" /></td><td className="p-0 border-r border-slate-200"><input type="text" value={row.name} onChange={(e) => handleDraftChange(row.rowId, 'name', e.target.value)} className="w-full p-3 outline-none" placeholder="실명 입력" /></td><td className="p-0 border-r border-slate-200"><input type="text" value={row.username} onChange={(e) => handleDraftChange(row.rowId, 'username', e.target.value)} className="w-full p-3 outline-none" placeholder="아이디 입력" /></td><td className="p-0 text-center align-middle"><button type="button" onClick={() => handleRemoveDraftRow(row.rowId)} className="text-slate-400 hover:text-red-500 w-full h-full min-h-[44px]"><Trash2 size={16} /></button></td></tr>
-                  ))}
-                </tbody></table></div>
-                <div className="flex justify-between items-center"><h3 className="font-bold text-lg">가입 학생 목록</h3><span className="text-xs font-bold text-slate-500">총 {students.length}명</span></div>
-                <div className="overflow-x-auto border rounded-xl"><table className="w-full text-left text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-3.5">학번</th><th className="p-3.5">이름</th><th className="p-3.5">아이디</th><th className="p-3.5 text-center">로그인</th><th className="p-3.5 text-right">계정 제어</th></tr></thead><tbody className="divide-y">
-                  {students.map(st => (
-                    <tr key={st.id} className="hover:bg-slate-50"><td className="p-3.5 font-mono">{st.studentNumber}</td><td className="p-3.5 font-bold">{st.name}</td><td className="p-3.5 font-mono">{st.username}</td><td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-md font-bold">{st.loginCount}회</span></td><td className="p-3.5 text-right space-x-2"><button onClick={()=>handleResetPassword(st)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">비번초기화</button><button onClick={()=>handleDeleteStudent(st)} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold">삭제</button></td></tr>
-                  ))}
-                </tbody></table></div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">학생 일괄 가입 등록</h3><button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-md transition-colors">일괄 등록 완료</button></div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 text-slate-600 border-b"><tr><th className="p-3 text-center font-bold w-12 border-r">No</th><th className="p-3 font-bold border-r">학번</th><th className="p-3 font-bold border-r">실명</th><th className="p-3 font-bold border-r">아이디 (ID)</th><th className="p-3 text-center font-bold w-16">삭제</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {draftStudents.map((row, index) => (
+                        <tr key={row.rowId} className="focus-within:bg-emerald-50/50 transition-colors">
+                          <td className="p-2 text-center text-slate-400 font-bold bg-slate-50 border-r">{index + 1}</td>
+                          <td className="p-0 border-r"><input type="text" value={row.no} onChange={(e) => handleDraftChange(row.rowId, 'no', e.target.value)} className="w-full p-3 outline-none bg-transparent focus:ring-2 focus:ring-emerald-500" placeholder="학번 입력" /></td>
+                          <td className="p-0 border-r"><input type="text" value={row.name} onChange={(e) => handleDraftChange(row.rowId, 'name', e.target.value)} className="w-full p-3 outline-none bg-transparent focus:ring-2 focus:ring-emerald-500" placeholder="실명 입력" /></td>
+                          <td className="p-0 border-r"><input type="text" value={row.username} onChange={(e) => handleDraftChange(row.rowId, 'username', e.target.value)} className="w-full p-3 outline-none bg-transparent focus:ring-2 focus:ring-emerald-500" placeholder="아이디 입력" /></td>
+                          <td className="p-0 text-center"><button type="button" onClick={() => handleRemoveDraftRow(row.rowId)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 w-full h-full min-h-[44px] flex items-center justify-center transition-colors"><Trash2 size={16} /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <button type="button" onClick={handleAddDraftRow} className="w-full p-3 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-t border-slate-200 flex justify-center items-center gap-1 transition-colors"><Plus size={16} /> 줄 추가하기 (행 추가)</button>
+                </div>
+                
+                <div className="flex justify-between items-center mt-8"><h3 className="font-bold text-lg text-slate-900">가입 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">아이디</th><th className="p-3.5 text-center font-bold text-slate-600">로그인</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {students.map(st => (
+                        <tr key={st.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-3.5 font-mono text-slate-500">{st.studentNumber}</td><td className="p-3.5 font-bold">{st.name}</td><td className="p-3.5 font-mono">{st.username}</td>
+                          <td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-1 rounded-md font-bold">{st.loginCount}회</span></td>
+                          <td className="p-3.5 text-right space-x-2"><button onClick={()=>handleResetPassword(st)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors">비번초기화</button><button onClick={()=>handleDeleteStudent(st)} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-colors">삭제</button></td>
+                        </tr>
+                      ))}
+                      {students.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-bold">등록된 학생이 없습니다.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
                 
                 {currentUser.id === 'teacher_admin' && (
-                  <div className="pt-6 border-t mt-6">
+                  <div className="pt-8 border-t border-slate-200 mt-8">
                     <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 교사 승인 대기방</h3>
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50 mb-6"><table className="w-full text-left text-sm"><thead className="bg-amber-50 border-b text-amber-900"><tr><th className="p-3">성함</th><th className="p-3">신청 아이디</th><th className="p-3">신청 일자</th><th className="p-3">상태</th><th className="p-3 text-right">권한 승인</th></tr></thead><tbody className="divide-y bg-white">
-                      {pendingTeachers.map(pt => (
-                        <tr key={pt.id} className="hover:bg-amber-50/30"><td className="p-3 font-bold">{pt.name}</td><td className="p-3 font-mono">{pt.username}</td><td className="p-3 text-xs">{pt.joinDate}</td><td className="p-3"><span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{pt.status}</span></td><td className="p-3 text-right space-x-2"><button onClick={() => handleApproveTeacher(pt)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold">승인</button><button onClick={() => handleRejectTeacher(pt)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">반려</button></td></tr>
-                      ))}
-                    </tbody></table></div>
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50 mb-6">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-amber-50 border-b border-slate-200 text-amber-900"><tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">신청 아이디</th><th className="p-3 font-bold">신청 일자</th><th className="p-3 font-bold">상태</th><th className="p-3 text-right font-bold">권한 승인</th></tr></thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                          {pendingTeachers.map(pt => (
+                            <tr key={pt.id} className="hover:bg-amber-50/30 transition-colors">
+                              <td className="p-3 font-bold">{pt.name}</td><td className="p-3 font-mono">{pt.username}</td><td className="p-3 text-xs font-mono text-slate-500">{pt.joinDate}</td>
+                              <td className="p-3"><span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold">{pt.status}</span></td>
+                              <td className="p-3 text-right space-x-2"><button onClick={() => handleApproveTeacher(pt)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">승인</button><button onClick={() => handleRejectTeacher(pt)} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">반려</button></td>
+                            </tr>
+                          ))}
+                          {pendingTeachers.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">대기 중인 교사가 없습니다.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -812,7 +930,7 @@ export default function App() {
                 <div className="bg-white/10 backdrop-blur p-5 rounded-2xl border border-white/20 text-center shrink-0 w-full md:w-auto z-10">
                   <p className="text-sm font-extrabold text-white mb-3">직접 풀고 첨삭을 받으려면?</p>
                   <div className="space-y-2">
-                    <button onClick={() => setAuthModal({ show: true, mode: 'student_register' })} className="w-full py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-xl transition-all">🚀 1분 학생 가입</button>
+                    <button onClick={() => setAuthModal({ show: true, mode: 'student_register' })} className="w-full py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-xl transition-all shadow-md">🚀 1분 학생 가입</button>
                     <button onClick={() => setAuthModal({ show: true, mode: 'student_login' })} className="w-full py-2 bg-white hover:bg-slate-100 text-indigo-900 text-xs font-bold rounded-xl transition-all">기존 계정 로그인</button>
                   </div>
                 </div>
@@ -826,8 +944,8 @@ export default function App() {
               </div>
               {currentUser?.role === 'student' && (
                 <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
-                  <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-xs font-bold ${activeTab === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-600'}`}>전체 탐색</button>
-                  <button onClick={() => setActiveTab('my')} className={`px-4 py-1.5 rounded-lg text-xs font-bold ${activeTab === 'my' ? 'bg-indigo-600 text-white' : 'text-slate-600'}`}>내 오답노트</button>
+                  <button onClick={() => setActiveTab('all')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>전체 탐색</button>
+                  <button onClick={() => setActiveTab('my')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>내 오답노트</button>
                 </div>
               )}
             </div>
@@ -837,14 +955,14 @@ export default function App() {
                 <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆</h3>
                 <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
                   {rankingData.map((student, idx) => (
-                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
-                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
-                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
-                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
-                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">{idx + 1}위</span>}
-                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner"><span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span></div>
+                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors shadow-sm">
+                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-amber-500">1위 🥇</span>}
+                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-slate-400">2위 🥈</span>}
+                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-amber-700">3위 🥉</span>}
+                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm border border-slate-300">{idx + 1}위</span>}
+                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner border border-indigo-200"><span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span></div>
                       <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
-                      <span className="text-xs font-black text-indigo-600 mt-1">{student.totalScore}점</span>
+                      <span className="text-xs font-black text-indigo-600 mt-1 bg-indigo-50 px-2 py-0.5 rounded-md">{student.totalScore}점</span>
                     </div>
                   ))}
                 </div>
@@ -864,11 +982,11 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4 pl-2">
                   <h3 className="font-extrabold text-lg flex items-center gap-2"><BookOpen className="text-indigo-600" size={20}/> 전체 아카이브</h3>
                   {currentUser?.role === 'student' && (
-                    <button onClick={() => setStudentQuestionModal(true)} className="px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md"><Sparkles size={14} className="inline mr-1"/> 나도 질문하기</button>
+                    <button onClick={() => setStudentQuestionModal(true)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-md transition-colors"><Sparkles size={14} className="inline mr-1"/> 나도 질문하기</button>
                   )}
                 </div>
                 {regularQuestions.length === 0 ? (
-                  <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-2xl border">결과가 없습니다.</div>
+                  <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-2xl border shadow-sm flex flex-col items-center gap-3"><Search size={40} className="opacity-20"/> <p>결과가 없습니다.</p></div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {regularQuestions.map(q => renderQuestionCard(q, false))}
@@ -881,40 +999,40 @@ export default function App() {
       </main>
 
       {/* ==============================================
-          💡 모든 전역 모달 UI를 렌더링 최하단에 배치 
+          💡 모든 전역 모달 UI를 렌더링 최하단에 안전하게 배치 
       ============================================== */}
 
-      {/* 1. 인증(Auth) 모달 */}
+      {/* 1. 인증(Auth) 모달 - Bug 2 텍스트 색상 및 배경 강제 적용 완료 */}
       {authModal.show && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
             <div className="flex justify-between items-center mb-5 border-b pb-3">
               <h3 className="font-extrabold text-lg text-slate-900">{authModal.mode === 'student_register' ? '🚀 학생 가입' : authModal.mode === 'teacher_register' ? '🧑‍🏫 교사 승인 신청' : authModal.mode === 'teacher_login' ? '🧑‍🏫 교사 로그인' : '✏️ 학생 로그인'}</h3>
-              <button onClick={() => setAuthModal({ show: false, mode: 'student_login' })} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><X size={18}/></button>
+              <button onClick={() => setAuthModal({ show: false, mode: 'student_login' })} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
             </div>
             {authModal.mode === 'student_register' ? (
               <form onSubmit={handleStudentSignUp} className="space-y-3">
-                <input type="text" value={signUpNo} onChange={e=>setSignUpNo(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번 (예: 30101)" required/>
-                <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="이름" required/>
-                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="아이디 (ID)" required/>
-                <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호 (6자 이상)" required/>
-                <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl mt-4">가입 완료 및 접속</button>
-                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_login'})} className="w-full text-xs text-indigo-600 font-bold mt-2">이미 계정이 있습니다</button>
+                <input type="text" value={signUpNo} onChange={e=>setSignUpNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번 (예: 30101)" required/>
+                <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="실명 입력" required/>
+                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="사용할 아이디 (ID)" required/>
+                <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호 (6자 이상)" required/>
+                <button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl mt-4 transition-colors shadow-md">가입 완료 및 접속</button>
+                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_login'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">이미 계정이 있습니다</button>
               </form>
             ) : authModal.mode === 'teacher_register' ? (
               <form onSubmit={handleTeacherSignUp} className="space-y-3">
-                <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500" placeholder="선생님 성함" required/>
-                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500" placeholder="교사용 아이디" required/>
-                <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500" placeholder="비밀번호 (6자 이상)" required/>
-                <button type="submit" className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl mt-4">가입 권한 신청하기</button>
-                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_login'})} className="w-full text-xs text-emerald-600 font-bold mt-2">교사 로그인으로 돌아가기</button>
+                <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="선생님 성함" required/>
+                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="교사용 아이디" required/>
+                <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="비밀번호 (6자 이상)" required/>
+                <button type="submit" className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4 transition-colors shadow-md">가입 권한 신청하기</button>
+                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_login'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">교사 로그인으로 돌아가기</button>
               </form>
             ) : (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <input type="text" value={loginIdInput} onChange={e=>setLoginIdInput(e.target.value)} className="w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500" placeholder="아이디" required/>
-                <input type="password" value={loginPwInput} onChange={e=>setLoginPwInput(e.target.value)} className="w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호" required/>
-                <label className="flex items-center gap-2 cursor-pointer pt-1 w-fit"><input type="checkbox" checked={keepLoggedIn} onChange={e=>setKeepLoggedIn(e.target.checked)} className="rounded text-indigo-600 w-4 h-4 cursor-pointer"/><span className="text-xs font-bold text-slate-600">자동 로그인 유지</span></label>
-                <button type="submit" className={`w-full py-3 text-white font-bold rounded-xl ${authModal.mode === 'teacher_login' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>로그인</button>
+                <input type="text" value={loginIdInput} onChange={e=>setLoginIdInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="아이디" required/>
+                <input type="password" value={loginPwInput} onChange={e=>setLoginPwInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호" required/>
+                <label className="flex items-center gap-2 cursor-pointer pt-1 w-fit"><input type="checkbox" checked={keepLoggedIn} onChange={e=>setKeepLoggedIn(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/><span className="text-xs font-bold text-slate-600">자동 로그인 (브라우저 종료 후에도 유지)</span></label>
+                <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl transition-colors shadow-md ${authModal.mode === 'teacher_login' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>로그인</button>
                 {authModal.mode === 'student_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_register'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">학생 가입하기</button>}
                 {authModal.mode === 'teacher_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_register'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">교사 가입 신청하기</button>}
               </form>
@@ -925,42 +1043,51 @@ export default function App() {
 
       {/* 2. 학생 질문 추가 모달 */}
       {studentQuestionModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[150]">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
             <div className="flex justify-between items-center mb-4 border-b pb-3">
-              <h3 className="font-extrabold text-lg flex items-center gap-2"><Sparkles className="text-amber-500"/> 질문하기</h3>
-              <button onClick={() => setStudentQuestionModal(false)} className="text-slate-400 p-1.5 rounded-full"><X size={18}/></button>
+              <h3 className="font-extrabold text-lg flex items-center gap-2 text-slate-900"><Sparkles className="text-amber-500"/> 질문하기</h3>
+              <button onClick={() => setStudentQuestionModal(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
             </div>
             <form onSubmit={handleStudentAddQuestion} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold mb-1">질문 제목</label>
-                <input type="text" value={studentNewQuestion.title} onChange={e => setStudentNewQuestion({...studentNewQuestion, title: e.target.value})} className="w-full px-3 py-2.5 rounded-xl border focus:ring-2 focus:ring-amber-500 outline-none" required />
+                <label className="block text-xs font-bold mb-1 text-slate-600">질문 제목</label>
+                <input type="text" value={studentNewQuestion.title} onChange={e => setStudentNewQuestion({...studentNewQuestion, title: e.target.value})} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="예: 2024 수능 22번 모르겠어요" required />
               </div>
               <div>
                 <label className="block text-xs font-bold mb-1 text-amber-600">필수 해시태그 (단원명 등 1개 이상 필수)</label>
-                <div className="flex flex-wrap gap-2 p-2 border rounded-xl focus-within:ring-2 focus-within:ring-amber-500">
+                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-amber-500 transition-shadow">
                   {studentNewQuestion.tags.map((tag) => (
-                    <span key={tag} className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex gap-1">#{tag} <button type="button" onClick={() => setStudentNewQuestion({ ...studentNewQuestion, tags: studentNewQuestion.tags.filter(t => t !== tag) })}>✕</button></span>
+                    <span key={tag} className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200 shadow-sm">#{tag} <button type="button" onClick={() => setStudentNewQuestion({ ...studentNewQuestion, tags: studentNewQuestion.tags.filter(t => t !== tag) })} className="hover:text-red-500">✕</button></span>
                   ))}
-                  <input type="text" value={studentNewQuestion.currentTagInput} onChange={e => setStudentNewQuestion({ ...studentNewQuestion, currentTagInput: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const val = studentNewQuestion.currentTagInput.trim().replace(/^#/, ''); if (val && !studentNewQuestion.tags.includes(val)) { setStudentNewQuestion({ ...studentNewQuestion, tags: [...studentNewQuestion.tags, val], currentTagInput: '' }); } } }} className="flex-1 outline-none text-xs min-w-[100px] placeholder-slate-400" placeholder="입력 후 Space..." />
+                  <input type="text" value={studentNewQuestion.currentTagInput} onChange={e => setStudentNewQuestion({ ...studentNewQuestion, currentTagInput: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const val = studentNewQuestion.currentTagInput.trim().replace(/^#/, ''); if (val && !studentNewQuestion.tags.includes(val)) { setStudentNewQuestion({ ...studentNewQuestion, tags: [...studentNewQuestion.tags, val], currentTagInput: '' }); } } }} className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" placeholder="입력 후 Space..." />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold mb-1">문제 이미지 (Ctrl+V)</label>
-                <div className="border-2 border-dashed border-amber-200 rounded-xl p-4 text-center bg-amber-50/30">
+                <label className="block text-xs font-bold mb-1 text-slate-600">문제 이미지 (Ctrl+V)</label>
+                <div className="border-2 border-dashed border-amber-200 rounded-xl p-4 text-center bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
                   {studentNewQuestion.imagePreviews.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       {studentNewQuestion.imagePreviews.map((preview, idx) => (
-                        <div key={idx} className="relative border rounded-lg overflow-hidden"><img src={preview} className="h-20 w-full object-cover"/><button type="button" onClick={() => setStudentNewQuestion(p => ({...p, images: p.images.filter((_, i)=>i!==idx), imagePreviews: p.imagePreviews.filter((_, i)=>i!==idx)}))} className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12}/></button></div>
+                        <div key={idx} className="relative border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm"><img src={preview} className="h-20 w-full object-cover"/><button type="button" onClick={() => setStudentNewQuestion(p => ({...p, images: p.images.filter((_, i)=>i!==idx), imagePreviews: p.imagePreviews.filter((_, i)=>i!==idx)}))} className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full shadow-md"><X size={12}/></button></div>
                       ))}
-                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-amber-300 rounded-lg hover:bg-amber-100 cursor-pointer min-h-[5rem]"><Plus size={20} className="text-amber-500" /><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setStudentNewQuestion(p=>({...p, images:[...p.images,...f!], imagePreviews:[...p.imagePreviews,...f.map(file=>URL.createObjectURL(file))]}));}} className="hidden" /></label>
+                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-amber-300 rounded-lg hover:bg-amber-100 cursor-pointer min-h-[5rem] transition-colors"><Plus size={20} className="text-amber-500" /><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setStudentNewQuestion(p=>({...p, images:[...p.images,...f!], imagePreviews:[...p.imagePreviews,...f.map(file=>URL.createObjectURL(file))]}));}} className="hidden" /></label>
                     </div>
                   ) : (
-                    <label className="cursor-pointer block py-4"><Upload className="mx-auto text-amber-500 mb-2" size={24}/><span className="text-xs font-bold text-amber-600 block">이미지 첨부하기</span><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setStudentNewQuestion(p=>({...p, images:[...p.images,...f!], imagePreviews:[...p.imagePreviews,...f.map(file=>URL.createObjectURL(file))]}));}} className="hidden" /></label>
+                    <label className="cursor-pointer block py-4"><Upload className="mx-auto text-amber-500 mb-2" size={24}/><span className="text-xs font-bold text-amber-600 block">클릭 또는 이미지 복사/붙여넣기</span><input type="file" multiple accept="image/*" onChange={(e)=>{const f=e.target.files?Array.from(e.target.files):[]; if(f.length>0)setStudentNewQuestion(p=>({...p, images:[...p.images,...f!], imagePreviews:[...p.imagePreviews,...f.map(file=>URL.createObjectURL(file))]}));}} className="hidden" /></label>
                   )}
                 </div>
               </div>
-              <button type="submit" disabled={isLoading} className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold">질문 등록하기</button>
+              <label className="flex items-start gap-3 bg-amber-50 p-4 rounded-xl border border-amber-100 cursor-pointer hover:bg-amber-100/50 transition-colors">
+                <input type="checkbox" checked={studentNewQuestion.isShared} onChange={e => setStudentNewQuestion({...studentNewQuestion, isShared: e.target.checked})} className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"/>
+                <div className="flex flex-col">
+                  <span className="text-sm font-extrabold text-amber-900">다른 학생들에게 질문 공개하기</span>
+                  <span className="text-[10px] font-semibold text-amber-700 mt-1">체크 시, 친구들이 질문에 대해 이미지로 답변을 달아줄 수 있습니다! (#질문있어요 태그 자동 부여)</span>
+                </div>
+              </label>
+              <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md">
+                질문 등록 완료하기
+              </button>
             </form>
           </div>
         </div>
@@ -968,33 +1095,34 @@ export default function App() {
 
       {/* 3. 교사 문제 수정 모달 */}
       {editQuestionModal && editingQuestion && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[150] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8 border border-slate-200">
             <div className="flex justify-between items-center mb-5 border-b pb-3">
               <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2"><Edit className="text-indigo-600" size={20}/> <span>문제 세트 수정</span></h3>
-              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 p-1.5 rounded-full"><X size={18}/></button>
+              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
             </div>
             <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
-              <input type="text" value={editingQuestion.title} onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} className="w-full px-3 py-2.5 rounded-xl border outline-none" required />
-              <div className="flex flex-wrap gap-2 p-2 border rounded-xl">
+              <input type="text" value={editingQuestion.title} onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500" required />
+              <div className="flex flex-wrap gap-2 p-2 border border-slate-300 rounded-xl bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
                 {editingQuestion.tags.map((tag) => (
-                  <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">#{tag} <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button></span>
+                  <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-indigo-200 shadow-sm">#{tag} <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})} className="hover:text-red-500">✕</button></span>
                 ))}
-                <input type="text" value={editingQuestion.currentTagInput} onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const val = editingQuestion.currentTagInput.trim().replace(/^#/, ''); if (val && !editingQuestion.tags.includes(val)) { setEditingQuestion({ ...editingQuestion, tags: [...editingQuestion.tags, val], currentTagInput: '' }); } } }} className="flex-1 outline-none text-xs" placeholder="태그 추가 (Enter)" />
+                <input type="text" value={editingQuestion.currentTagInput} onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const val = editingQuestion.currentTagInput.trim().replace(/^#/, ''); if (val && !editingQuestion.tags.includes(val)) { setEditingQuestion({ ...editingQuestion, tags: [...editingQuestion.tags, val], currentTagInput: '' }); } } }} className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900" placeholder="태그 추가 (Enter)" />
               </div>
-              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border">
-                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingQuestion.isPinned} onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} className="rounded text-indigo-600" /> <span className="text-xs font-bold">상단 고정</span></label>
-                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingQuestion.isChallenge} onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} className="rounded text-indigo-600" /> <span className="text-xs font-bold">공개 챌린지</span></label>
+              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingQuestion.isPinned} onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} className="rounded text-indigo-600 focus:ring-indigo-500" /> <span className="text-xs font-bold text-slate-700">상단 고정</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingQuestion.isChallenge} onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} className="rounded text-indigo-600 focus:ring-indigo-500" /> <span className="text-xs font-bold text-slate-700">공개 챌린지</span></label>
               </div>
-              <div onDragOver={e => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')); if (files.length > 0) { setEditingQuestion(prev => prev ? ({ ...prev, items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))] }) : null); } }} className="border-2 border-dashed rounded-xl p-4 text-center bg-slate-50">
+              <div onDragOver={e => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')); if (files.length > 0) { setEditingQuestion(prev => prev ? ({ ...prev, items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))] }) : null); } }} className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100 transition-colors">
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {editingQuestion.items.map((item, idx) => (
-                    <div key={idx} className="relative border rounded-lg overflow-hidden bg-white"><img src={item.url} className="h-16 w-full object-cover" /><button type="button" onClick={() => setEditingQuestion({...editingQuestion, items: editingQuestion.items.filter((_, i) => i !== idx)})} className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={10}/></button></div>
+                    <div key={idx} className="relative border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm"><img src={item.url} className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/><button type="button" onClick={() => setEditingQuestion({...editingQuestion, items: editingQuestion.items.filter((_, i) => i !== idx)})} className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full shadow-md"><X size={10}/></button></div>
                   ))}
-                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 rounded-lg cursor-pointer h-16"><Plus size={16} className="text-indigo-500" /><input type="file" multiple accept="image/*" onChange={(e) => { const files = e.target.files ? Array.from(e.target.files) : []; if (files.length > 0) { setEditingQuestion(prev => prev ? ({ ...prev, items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))] }) : null); } }} className="hidden" /></label>
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg cursor-pointer h-16 bg-white transition-colors"><Plus size={16} className="text-indigo-500" /><span className="text-[9px] font-bold text-indigo-600">추가 (Ctrl+V)</span><input type="file" multiple accept="image/*" onChange={(e) => { const files = e.target.files ? Array.from(e.target.files) : []; if (files.length > 0) { setEditingQuestion(prev => prev ? ({ ...prev, items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))] }) : null); } }} className="hidden" /></label>
                 </div>
+                <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 이미지 복사/붙여넣기 제어해 주세요!</span>
               </div>
-              <div className="flex gap-2.5 pt-3"><button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs">수정 완료</button></div>
+              <div className="flex gap-2.5 pt-3"><button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-colors">정보 수정 완료</button></div>
             </form>
           </div>
         </div>
@@ -1002,43 +1130,43 @@ export default function App() {
 
       {/* 4. 문항 상세 보기 (현황판 및 챌린지 코칭 모달) */}
       {selectedQuestion && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-5xl w-full h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur flex items-center justify-center p-4 z-[80]">
+          <div className="bg-white rounded-2xl max-w-5xl w-full h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-start">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                   {selectedQuestion.isChallenge && <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1"><Trophy size={10}/> 챌린지</span>}
-                  {selectedQuestion.tags.map((t, i) => <span key={i} className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">#{t}</span>)}
+                  {selectedQuestion.tags.map((t, i) => <span key={i} className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-300 shadow-sm">#{t}</span>)}
                 </div>
                 <h3 className="font-extrabold text-xl text-slate-900">{selectedQuestion.title}</h3>
               </div>
-              <button onClick={() => { setSelectedQuestion(null); setViewingSubmission(null); setStudentSolutionPreview(''); setFeedbackInputImagePreview(''); }} className="p-2 hover:bg-slate-200 rounded-full"><X size={20} className="text-slate-500" /></button>
+              <button onClick={() => { setSelectedQuestion(null); setViewingSubmission(null); setStudentSolutionPreview(''); setFeedbackInputImagePreview(''); }} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button>
             </div>
             
             <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
               {/* Left Side: Question Images and Peer Gallery */}
               <div className="md:w-1/2 flex flex-col border-r border-slate-200 bg-slate-50/50 p-6 overflow-y-auto">
                 <h4 className="text-xs font-extrabold text-slate-500 flex items-center gap-1 mb-3"><FileText size={14}/> 기출문제 세트</h4>
-                <div className="relative group bg-white border border-slate-200 rounded-xl flex items-center justify-center h-[350px] mb-4">
+                <div className="relative group bg-white border border-slate-200 rounded-xl flex items-center justify-center h-[350px] mb-4 overflow-hidden shadow-sm">
                   <img src={selectedQuestion.imageUrls[qImageIdx]} alt="문제 이미지" className="max-h-full max-w-full object-contain p-2 cursor-zoom-in" onClick={()=>openLightbox(selectedQuestion.imageUrls[qImageIdx], selectedQuestion.title)} />
                   {selectedQuestion.imageUrls.length > 1 && (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); setQImageIdx(p => Math.max(0, p - 1)); }} disabled={qImageIdx === 0} className={`absolute left-2 p-2 rounded-full bg-slate-800/60 text-white hover:bg-slate-800 transition ${qImageIdx === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}><ArrowLeft size={20}/></button>
-                      <button onClick={(e) => { e.stopPropagation(); setQImageIdx(p => Math.min(selectedQuestion.imageUrls.length - 1, p + 1)); }} disabled={qImageIdx === selectedQuestion.imageUrls.length - 1} className={`absolute right-2 p-2 rounded-full bg-slate-800/60 text-white hover:bg-slate-800 transition ${qImageIdx === selectedQuestion.imageUrls.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}><ArrowRight size={20}/></button>
-                      <div className="absolute bottom-3 bg-slate-900/70 text-white text-[10px] font-bold px-3 py-1 rounded-full">{qImageIdx + 1} / {selectedQuestion.imageUrls.length}</div>
+                      <button onClick={(e) => { e.stopPropagation(); setQImageIdx(p => Math.max(0, p - 1)); }} disabled={qImageIdx === 0} className={`absolute left-2 p-2 rounded-full bg-slate-800/60 text-white hover:bg-slate-800 transition shadow-md ${qImageIdx === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}><ArrowLeft size={20}/></button>
+                      <button onClick={(e) => { e.stopPropagation(); setQImageIdx(p => Math.min(selectedQuestion.imageUrls.length - 1, p + 1)); }} disabled={qImageIdx === selectedQuestion.imageUrls.length - 1} className={`absolute right-2 p-2 rounded-full bg-slate-800/60 text-white hover:bg-slate-800 transition shadow-md ${qImageIdx === selectedQuestion.imageUrls.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}><ArrowRight size={20}/></button>
+                      <div className="absolute bottom-3 bg-slate-900/70 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm border border-white/20">{qImageIdx + 1} / {selectedQuestion.imageUrls.length}</div>
                     </>
                   )}
                 </div>
 
                 {selectedQuestion.isChallenge && currentUser?.role === 'student' && submissions.some(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id) && (
-                  <div className="mt-auto border-t pt-5">
+                  <div className="mt-auto border-t pt-5 border-slate-200">
                     <h4 className="text-sm font-extrabold text-indigo-700 mb-3 flex items-center gap-1"><Users size={16}/> 참가자 갤러리 (친구 풀이 보기)</h4>
-                    <div className="flex gap-2 overflow-x-auto pb-2">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
                       {submissions.filter(s => s.questionId === selectedQuestion.id && s.isShared && s.studentId !== currentUser.id).length === 0 ? (
-                        <p className="text-xs text-slate-400 py-3 bg-white w-full text-center rounded-xl border border-dashed border-slate-200">공개된 풀이가 없습니다.</p>
+                        <p className="text-xs text-slate-400 py-3 bg-white w-full text-center rounded-xl border border-dashed border-slate-200">공개된 다른 학생의 풀이가 없습니다.</p>
                       ) : (
                         submissions.filter(s => s.questionId === selectedQuestion.id && s.isShared && s.studentId !== currentUser.id).map(peerSub => (
-                          <button key={peerSub.id} onClick={() => setViewingSubmission(peerSub)} className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${currentViewingSubmission?.id === peerSub.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-700 hover:border-indigo-400'}`}>{peerSub.studentName} 학생</button>
+                          <button key={peerSub.id} onClick={() => setViewingSubmission(peerSub)} className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${currentViewingSubmission?.id === peerSub.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-700 hover:border-indigo-400 shadow-sm'}`}>{peerSub.studentName} 학생</button>
                         ))
                       )}
                     </div>
@@ -1050,7 +1178,7 @@ export default function App() {
               <div className="md:w-1/2 p-6 overflow-y-auto bg-white flex flex-col">
                 {currentUser?.role === 'teacher' ? (
                   currentViewingSubmission ? (
-                    <div className="flex flex-col h-full">
+                    <div className="flex flex-col h-full animate-fade-in">
                       {(() => {
                         const attempts = currentViewingSubmission.attempts || [{ imageUrl: currentViewingSubmission.imageUrl, feedbackText: currentViewingSubmission.feedbackText, feedbackImageUrl: currentViewingSubmission.feedbackImageUrl, submittedAt: currentViewingSubmission.submittedAt }];
                         const currentIdx = Math.min(selectedAttemptIdx, attempts.length - 1);
@@ -1058,50 +1186,50 @@ export default function App() {
                         const isLatest = currentIdx === attempts.length - 1;
                         return (
                           <>
-                            <button onClick={() => setViewingSubmission(null)} className="text-xs text-slate-500 hover:text-emerald-600 font-bold mb-3 flex items-center gap-1 w-fit transition-colors"><ArrowLeft size={14}/> 목록으로 돌아가기</button>
+                            <button onClick={() => setViewingSubmission(null)} className="text-xs text-slate-500 hover:text-emerald-600 font-bold mb-3 flex items-center gap-1 w-fit transition-colors bg-slate-50 px-2 py-1 rounded-md border border-slate-200"><ArrowLeft size={14}/> 목록으로 돌아가기</button>
                             <div className="flex justify-between items-end mb-1"><h4 className="font-extrabold text-emerald-600 flex items-center gap-1 text-sm"><CheckCircle size={16}/> {currentViewingSubmission.studentName} 학생 풀이 첨삭</h4></div>
-                            <div className="mb-4 bg-slate-100 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 flex gap-1.5 w-fit"><span>📅 제출 시간:</span> <span className="font-mono font-bold bg-white px-2 py-0.5 rounded shadow-sm">{formatDateTime(currentAttempt.submittedAt || currentViewingSubmission.submittedAt)}</span></div>
+                            <div className="mb-4 bg-slate-100 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 flex gap-1.5 w-fit border border-slate-200"><span>📅 제출 시간:</span> <span className="font-mono font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-100">{formatDateTime(currentAttempt.submittedAt || currentViewingSubmission.submittedAt)}</span></div>
                             
                             {attempts.length > 1 && (
                               <div className="flex flex-wrap gap-2 pb-4 mb-4 border-b border-slate-100 items-center">
                                 <span className="text-sm font-bold text-slate-500 shrink-0 mr-1">풀이 회차:</span>
                                 {attempts.map((_, idx) => (
-                                  <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setFeedbackInputText(attempts[idx].feedbackText || ''); setFeedbackInputImagePreview(attempts[idx].feedbackImageUrl || ''); setFeedbackInputImage(null); }} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors shadow-sm ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}>{idx + 1}회차 {idx === attempts.length - 1 && '(최신)'}</button>
+                                  <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setFeedbackInputText(attempts[idx].feedbackText || ''); setFeedbackInputImagePreview(attempts[idx].feedbackImageUrl || ''); setFeedbackInputImage(null); }} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors shadow-sm ${currentIdx === idx ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'}`}>{idx + 1}회차 {idx === attempts.length - 1 && '(최신)'}</button>
                                 ))}
                               </div>
                             )}
 
-                            <img src={currentAttempt.imageUrl} className="h-40 object-contain rounded-xl border mb-4 bg-slate-50 cursor-zoom-in" onClick={()=>openLightbox(currentAttempt.imageUrl, currentViewingSubmission.studentName + ' 풀이')}/>
+                            <img src={currentAttempt.imageUrl} className="h-40 object-contain rounded-xl border border-slate-200 shadow-inner mb-4 bg-slate-50 cursor-zoom-in hover:opacity-90 transition-opacity" onClick={()=>openLightbox(currentAttempt.imageUrl, currentViewingSubmission.studentName + ' 학생 풀이 (' + (currentIdx+1) + '회차)')}/>
                             
                             <div className="flex-1 space-y-4">
                               <div className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${feedbackInputImagePreview ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:bg-slate-50'}`}>
                                 {feedbackInputImagePreview ? (
-                                  <div className="relative"><img src={feedbackInputImagePreview} className="max-h-24 mx-auto rounded"/><button onClick={(e)=>{e.stopPropagation(); setFeedbackInputImagePreview(''); setFeedbackInputImage(null);}} className="absolute top-0 right-0 bg-slate-800 text-white p-1 rounded-full shadow-md hover:bg-red-500"><X size={12}/></button></div>
+                                  <div className="relative"><img src={feedbackInputImagePreview} className="max-h-24 mx-auto rounded border shadow-sm"/><button onClick={(e)=>{e.stopPropagation(); setFeedbackInputImagePreview(''); setFeedbackInputImage(null);}} className="absolute top-0 right-0 bg-slate-800 hover:bg-red-600 text-white p-1 rounded-full shadow-md transition-colors"><X size={12}/></button></div>
                                 ) : (
-                                  <label className="cursor-pointer block"><Upload className="mx-auto text-slate-400 mb-1" size={20}/><span className="text-xs font-bold text-emerald-600">{isLatest ? '새로운 첨삭 이미지 (Ctrl+V)' : '이 회차 첨삭 덮어쓰기 (Ctrl+V)'}</span><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setFeedbackInputImage(f[0]); setFeedbackInputImagePreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
+                                  <label className="cursor-pointer block"><Upload className="mx-auto text-slate-400 mb-1" size={20}/><span className="text-xs font-bold text-emerald-600">{isLatest ? '새로운 첨삭 이미지 업로드 (Ctrl+V)' : '이 회차 첨삭 덮어쓰기 (Ctrl+V)'}</span><input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setFeedbackInputImage(files[0]); setFeedbackInputImagePreview(URL.createObjectURL(files[0]));}}} className="hidden"/></label>
                                 )}
                               </div>
-                              <textarea value={feedbackInputText} onChange={e=>setFeedbackInputText(e.target.value)} placeholder="코멘트를 남겨주세요." className="w-full p-3 rounded-xl border border-slate-300 bg-white text-sm h-24 outline-none focus:ring-2 focus:ring-emerald-500 resize-none"/>
+                              <textarea value={feedbackInputText} onChange={e=>setFeedbackInputText(e.target.value)} placeholder="격려와 코멘트를 남겨주세요." className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 text-sm h-24 outline-none focus:ring-2 focus:ring-emerald-500 resize-none shadow-sm"/>
                             </div>
-                            <button onClick={handleSaveFeedbackSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4">{isLatest ? '첨삭 저장 및 전송' : (currentIdx+1) + '회차 첨삭 수정하기'}</button>
+                            <button onClick={handleSaveFeedbackSubmit} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4 shadow-md transition-colors">{isLatest ? '첨삭 저장 및 전송' : (currentIdx+1) + '회차 첨삭 수정하기'}</button>
                           </>
                         );
                       })()}
                     </div>
                   ) : (
-                    <div className="h-full flex flex-col">
+                    <div className="h-full flex flex-col animate-fade-in">
                       <h4 className="font-extrabold text-emerald-600 mb-4 flex items-center gap-1 text-sm"><Users size={16}/> 제출된 학생 풀이 목록</h4>
                       {(() => {
                         const qSubs = submissions.filter(s => s.questionId === selectedQuestion.id);
-                        if (qSubs.length === 0) return <div className="flex-1 flex flex-col justify-center items-center text-slate-400 font-semibold"><p>제출된 풀이가 없습니다.</p></div>;
+                        if (qSubs.length === 0) return <div className="flex-1 flex flex-col justify-center items-center text-slate-400 font-semibold border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50"><p>아직 제출된 풀이가 없습니다.</p></div>;
                         return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto pb-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto pb-4 scrollbar-thin">
                             {qSubs.map(sub => {
                               const attemptsCount = sub.attempts ? sub.attempts.length : 1;
                               return (
-                                <div key={sub.id} onClick={() => { setViewingSubmission(sub); setActiveFeedbackSubmissionId(sub.id); const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl, submittedAt: sub.submittedAt }]; const latestAtt = atts[atts.length - 1]; setFeedbackInputText(latestAtt.feedbackText||''); setFeedbackInputImagePreview(latestAtt.feedbackImageUrl||''); setSelectedAttemptIdx(atts.length - 1); }} className="bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-emerald-400 flex flex-col">
-                                  <div className="relative h-24 mb-2 rounded bg-white border overflow-hidden shrink-0"><img src={sub.imageUrl} className="w-full h-full object-cover" /><span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm ${sub.status==='피드백 완료'?'bg-emerald-500 text-white':'bg-amber-400 text-white'}`}>{sub.status}</span></div>
-                                  <div className="flex justify-between items-center mt-auto"><span className="font-bold text-sm truncate">{sub.studentName}</span><span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">{attemptsCount}회</span></div>
+                                <div key={sub.id} onClick={() => { setViewingSubmission(sub); setActiveFeedbackSubmissionId(sub.id); const atts = sub.attempts || [{ feedbackText: sub.feedbackText, feedbackImageUrl: sub.feedbackImageUrl, submittedAt: sub.submittedAt }]; const latestAtt = atts[atts.length - 1]; setFeedbackInputText(latestAtt.feedbackText||''); setFeedbackInputImagePreview(latestAtt.feedbackImageUrl||''); setSelectedAttemptIdx(atts.length - 1); }} className="bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all group flex flex-col">
+                                  <div className="relative h-24 mb-2 rounded border border-slate-100 overflow-hidden shrink-0 bg-slate-50"><img src={sub.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /><span className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold shadow-sm border ${sub.status==='피드백 완료'?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-amber-50 text-amber-700 border-amber-200'}`}>{sub.status}</span></div>
+                                  <div className="flex justify-between items-center mt-auto"><span className="font-bold text-sm text-slate-800 truncate">{sub.studentName}</span><span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shadow-sm">{attemptsCount}회</span></div>
                                 </div>
                               )
                             })}
@@ -1111,7 +1239,7 @@ export default function App() {
                     </div>
                   )
                 ) : (currentUser?.role === 'student' && submissions.some(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id)) ? (
-                  <div className="flex flex-col h-full">
+                  <div className="flex flex-col h-full animate-fade-in">
                     {(() => {
                       const targetSub = currentViewingSubmission || submissions.filter(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id).pop() || {} as Submission;
                       const isMy = targetSub.studentId === currentUser.id;
@@ -1122,69 +1250,72 @@ export default function App() {
                       const hasFeed = !!currentAttempt.feedbackText || !!currentAttempt.feedbackImageUrl;
                       return (
                         <div className="flex flex-col h-full space-y-4">
-                          <div className={`p-4 rounded-2xl flex justify-between items-center ${isMy ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-200'}`}>
+                          <div className={`p-4 rounded-2xl flex justify-between items-center shadow-sm border ${isMy ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
                             <span className="font-extrabold text-sm flex items-center gap-2">{isMy ? <><User size={16} className="text-indigo-600"/> 내 기록</> : <><Users size={16} className="text-slate-600"/> {targetSub.studentName} 학생 풀이</>}</span>
-                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${hasFeed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shadow-sm ${hasFeed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{hasFeed ? '피드백 완료' : '피드백 대기'}</span>
                           </div>
+                          <div className="bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 flex items-center gap-1.5 w-fit shrink-0 shadow-sm"><span>📅</span> <span>제출 시간:</span> <span className="font-mono text-slate-800 font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-slate-100">{formatDateTime(currentAttempt.submittedAt || targetSub.submittedAt)}</span></div>
                           
                           {attempts.length > 1 && (
-                            <div className="flex flex-wrap gap-2 pb-2 border-b shrink-0 items-center">
+                            <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-100 shrink-0 items-center">
                               <span className="text-sm font-bold text-slate-500 mr-1">이전 기록:</span>
                               {attempts.map((_, idx) => (
-                                <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setIsEditingSolution(false); }} className={`px-4 py-2 text-xs font-bold rounded-xl border shadow-sm ${currentIdx === idx ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>{idx + 1}회차</button>
+                                <button key={idx} onClick={() => { setSelectedAttemptIdx(idx); setIsEditingSolution(false); }} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors shadow-sm ${currentIdx === idx ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>{idx + 1}회차</button>
                               ))}
                             </div>
                           )}
 
                           <div className="grid grid-cols-2 gap-3 shrink-0">
-                            <div className="border rounded-xl bg-slate-50 text-center relative overflow-hidden cursor-zoom-in" onClick={()=>openLightbox(currentAttempt.imageUrl, '풀이 이미지')}><div className="absolute top-0 w-full bg-black/60 text-white text-[9px] font-bold py-1 z-10">제출본</div><img src={currentAttempt.imageUrl} className="h-32 w-full object-cover" /></div>
-                            <div className="border rounded-xl bg-red-50/30 text-center relative overflow-hidden cursor-zoom-in" onClick={()=>hasFeed && currentAttempt.feedbackImageUrl && openLightbox(currentAttempt.feedbackImageUrl, '교사 첨삭')}><div className="absolute top-0 w-full bg-red-600/80 text-white text-[9px] font-bold py-1 z-10">선생님 첨삭</div>{currentAttempt.feedbackImageUrl ? <img src={currentAttempt.feedbackImageUrl} className="h-32 w-full object-cover" /> : <div className="h-32 flex items-center justify-center text-[10px] text-slate-400 font-bold">{hasFeed ? '이미지 첨삭 없음' : '대기 중 ⏳'}</div>}</div>
+                            <div className="border border-slate-200 rounded-xl bg-slate-50 text-center relative overflow-hidden cursor-zoom-in shadow-sm" onClick={()=>openLightbox(currentAttempt.imageUrl, '풀이 이미지')}><div className="absolute top-0 w-full bg-black/60 text-white text-[9px] font-bold py-1.5 z-10 backdrop-blur-sm">제출본</div><img src={currentAttempt.imageUrl} className="h-32 w-full object-cover hover:opacity-90 transition-opacity" /></div>
+                            <div className="border border-red-200 rounded-xl bg-red-50 text-center relative overflow-hidden cursor-zoom-in shadow-sm" onClick={()=>hasFeed && currentAttempt.feedbackImageUrl && openLightbox(currentAttempt.feedbackImageUrl, '교사 첨삭')}><div className="absolute top-0 w-full bg-red-600/80 text-white text-[9px] font-bold py-1.5 z-10 backdrop-blur-sm">선생님 첨삭</div>{currentAttempt.feedbackImageUrl ? <img src={currentAttempt.feedbackImageUrl} className="h-32 w-full object-cover hover:opacity-90 transition-opacity" /> : <div className="h-32 flex items-center justify-center text-[10px] text-slate-400 font-bold bg-white/50">{hasFeed ? '이미지 첨삭 없음' : '대기 중 ⏳'}</div>}</div>
                           </div>
 
                           {hasFeed && currentAttempt.feedbackText && (
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shrink-0"><span className="text-[10px] font-extrabold text-indigo-700 flex gap-1 mb-1.5"><Sparkles size={12}/> 선생님 코멘트</span><p className="text-xs font-semibold text-slate-700">{currentAttempt.feedbackText}</p></div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shrink-0 shadow-sm"><span className="text-[10px] font-extrabold text-indigo-700 flex gap-1 mb-1.5"><Sparkles size={12}/> 선생님 코멘트</span><p className="text-xs font-semibold text-slate-700 leading-relaxed whitespace-pre-wrap">{currentAttempt.feedbackText}</p></div>
                           )}
 
-                          {isMy && isLatest && !isEditingSolution && <button onClick={() => setIsEditingSolution(true)} className="w-full py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl border border-indigo-200">✏️ 다시 풀어서 추가 제출하기</button>}
+                          {isMy && isLatest && !isEditingSolution && <button onClick={() => setIsEditingSolution(true)} className="w-full py-3.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl border border-indigo-200 transition-colors shrink-0 shadow-sm">✏️ 다시 풀어서 추가 제출하기 (이전 기록 보존)</button>}
 
                           {isEditingSolution && (
-                            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl shrink-0 animate-fade-in">
-                              <div className="flex justify-between items-center mb-3"><h4 className="font-extrabold text-sm text-indigo-950">추가 풀이 업로드</h4><button onClick={() => { setIsEditingSolution(false); setStudentSolutionPreview(''); setStudentSolutionImage(null); }} className="text-slate-400 bg-white p-1 rounded-full shadow-sm"><X size={14}/></button></div>
-                              <div className="border-2 border-dashed border-indigo-200 rounded-xl p-4 text-center bg-white mb-3 cursor-pointer">
+                            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl shrink-0 animate-fade-in shadow-sm">
+                              <div className="flex justify-between items-center mb-3"><h4 className="font-extrabold text-sm text-indigo-950">추가 풀이 업로드</h4><button onClick={() => { setIsEditingSolution(false); setStudentSolutionPreview(''); setStudentSolutionImage(null); }} className="text-slate-400 hover:bg-slate-200 bg-white p-1 rounded-full shadow-sm transition-colors"><X size={14}/></button></div>
+                              <div className="border-2 border-dashed border-indigo-200 rounded-xl p-4 text-center bg-white mb-3 cursor-pointer hover:bg-indigo-50/50 transition-colors">
                                 {studentSolutionPreview ? (
-                                  <div className="relative"><img src={studentSolutionPreview} className="max-h-24 mx-auto rounded-lg border shadow-sm"/><button onClick={(e)=>{e.stopPropagation(); setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md"><X size={12}/></button></div>
+                                  <div className="relative"><img src={studentSolutionPreview} className="max-h-24 mx-auto rounded-lg border shadow-sm"/><button onClick={(e)=>{e.stopPropagation(); setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full shadow-md transition-colors"><X size={12}/></button></div>
                                 ) : (
-                                  <label className="cursor-pointer block"><Upload className="mx-auto text-indigo-400 mb-2" size={24}/><span className="text-xs font-bold text-indigo-600 block">새로 푼 사진 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setStudentSolutionImage(f[0]); setStudentSolutionPreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
+                                  <label className="cursor-pointer block"><Upload className="mx-auto text-indigo-400 mb-2" size={24}/><span className="text-xs font-bold text-indigo-600 block">새로 푼 사진 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setStudentSolutionImage(files[0]); setStudentSolutionPreview(URL.createObjectURL(files[0]));}}} className="hidden"/></label>
                                 )}
                               </div>
-                              <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-2.5 bg-indigo-600 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-sm text-xs">추가 회차 제출</button>
+                              <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-3 bg-indigo-600 disabled:bg-slate-300 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-colors text-xs">추가 회차 제출</button>
                             </div>
                           )}
 
                           {selectedQuestion.isChallenge && !isMy && (
                             <div className="flex-1 flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm mt-2">
-                              <div className="bg-slate-100 p-2.5 text-xs font-extrabold text-slate-700 flex items-center gap-1"><MessageCircle size={14}/> {selectedQuestion.isStudentQuestion ? '답변 및 의견' : '친구들의 의견'}</div>
-                              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 min-h-[200px]">
+                              <div className="bg-slate-100 p-3 text-xs font-extrabold text-slate-700 flex items-center gap-1 border-b border-slate-200"><MessageCircle size={14}/> {selectedQuestion.isStudentQuestion ? '답변 및 의견' : '친구들의 의견'}</div>
+                              
+                              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 min-h-[320px] scrollbar-thin">
                                 {targetSub.peerComments && targetSub.peerComments.length > 0 ? (
                                   targetSub.peerComments.map((c) => (
                                     <div key={c.id} className="flex gap-2.5 items-start fade-in select-text">
-                                      <div className="w-8 h-8 rounded-full bg-indigo-600/10 text-indigo-700 font-extrabold text-xs flex items-center justify-center shrink-0 border border-indigo-200">{c.authorName[0]}</div>
-                                      <div className="flex-1 bg-white border border-slate-100 rounded-2xl p-3.5 shadow-sm text-xs relative max-w-[85%]">
-                                        <div className="flex justify-between items-center mb-1"><span className="font-extrabold text-slate-800">{c.authorName}</span><span className="text-[9px] text-slate-400 font-mono">{formatDateTime(c.createdAt)}</span></div>
+                                      <div className="w-8 h-8 rounded-full bg-indigo-600/10 text-indigo-700 font-extrabold text-xs flex items-center justify-center shrink-0 border border-indigo-200 shadow-sm">{c.authorName[0]}</div>
+                                      <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm text-xs relative max-w-[85%]">
+                                        <div className="flex justify-between items-center mb-1.5"><span className="font-extrabold text-slate-800">{c.authorName}</span><span className="text-[9px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded border">{formatDateTime(c.createdAt)}</span></div>
                                         {c.imageUrl && (
-                                          <div className="my-2 max-w-full rounded-lg overflow-hidden border border-slate-100 cursor-zoom-in relative group" onClick={() => openLightbox(c.imageUrl!, '첨부 사진')}>
+                                          <div className="my-2 max-w-full rounded-lg overflow-hidden border border-slate-200 cursor-zoom-in relative group shadow-sm" onClick={() => openLightbox(c.imageUrl!, '첨부 사진')}>
                                             <img src={c.imageUrl} className="max-h-36 object-contain bg-slate-50 w-full" />
+                                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold">확대 보기</div>
                                           </div>
                                         )}
-                                        <p className="text-slate-700 leading-relaxed break-all whitespace-pre-wrap">{c.text}</p>
+                                        <p className="text-slate-700 leading-relaxed break-all whitespace-pre-wrap mt-1">{c.text}</p>
                                       </div>
                                     </div>
                                   ))
                                 ) : (
-                                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10 text-center gap-2"><p className="text-[10px] font-bold">첫 번째 답글을 남겨주세요!</p></div>
+                                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10 text-center gap-2"><MessageSquare size={36} className="opacity-20 animate-bounce" /><p className="text-[10px] font-bold mt-2">작성된 답변 의견이 없습니다.</p><p className="text-[9px] text-slate-300">첫 번째 친절한 피드백 답글을 남겨주세요!</p></div>
                                 )}
                               </div>
-                              <form onSubmit={(e)=>handlePeerCommentSubmit(e, targetSub.id)} className="p-3.5 border-t bg-white flex flex-col gap-2.5">
+                              <form onSubmit={(e)=>handlePeerCommentSubmit(e, targetSub.id)} className="p-3.5 border-t border-slate-200 bg-white flex flex-col gap-2.5">
                                 {peerCommentImagePreview && (
                                   <div className="relative w-fit border rounded-lg p-1 bg-slate-50 shadow-sm animate-in slide-in-from-bottom-2">
                                     <img src={peerCommentImagePreview} className="h-16 rounded object-cover"/>
@@ -1192,32 +1323,33 @@ export default function App() {
                                   </div>
                                 )}
                                 <div className="flex gap-2.5 items-center">
-                                  <label className="cursor-pointer text-slate-400 shrink-0 p-1 bg-slate-100 rounded-lg"><ImageIcon size={20}/><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setPeerCommentImage(f[0]); setPeerCommentImagePreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
-                                  <input type="text" value={peerCommentInput} onChange={e=>setPeerCommentInput(e.target.value)} className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/50" placeholder="Ctrl+V 이미지 첨부 또는 텍스트 입력..." />
-                                  <button type="submit" disabled={!peerCommentInput.trim() && !peerCommentImage} className="bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">전송</button>
+                                  <label className="cursor-pointer text-slate-400 hover:text-indigo-600 shrink-0 p-1.5 bg-slate-50 border border-slate-200 shadow-sm rounded-lg hover:bg-indigo-50 transition-colors" title="사진 파일 첨부"><ImageIcon size={20}/><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setPeerCommentImage(f[0]); setPeerCommentImagePreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
+                                  <input type="text" value={peerCommentInput} onChange={e=>setPeerCommentInput(e.target.value)} className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition-all shadow-inner" placeholder="이미지 붙여넣기(Ctrl+V) 또는 의견 남기기..." />
+                                  <button type="submit" disabled={!peerCommentInput.trim() && !peerCommentImage} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white px-5 py-2.5 rounded-xl text-xs font-bold shrink-0 transition-colors shadow-sm">등록</button>
                                 </div>
                               </form>
                             </div>
                           )}
-                          {!isMy && <button onClick={()=>setViewingSubmission(null)} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl mt-auto shadow-md">목록으로 돌아가기</button>}
+                          {!isMy && <button onClick={()=>setViewingSubmission(null)} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl mt-auto shadow-md transition-colors text-xs">목록으로 돌아가기</button>}
                         </div>
                       );
                     })()}
                   </div>
                 ) : (currentUser?.role === 'student') && (
-                  <div className="flex flex-col justify-center h-full space-y-6">
-                    <div className="text-center"><h4 className="font-extrabold text-lg text-slate-900">제출/답변 업로드</h4></div>
-                    <div className="border-2 border-dashed border-indigo-200 rounded-3xl p-6 text-center bg-indigo-50/30">
+                  <div className="flex flex-col justify-center h-full space-y-6 animate-fade-in">
+                    <div className="text-center"><h4 className="font-extrabold text-lg text-slate-900">{selectedQuestion.isStudentQuestion ? '이 질문에 답변해 줄 수 있나요?' : '도전할 준비가 되었나요?'}</h4><p className="text-xs text-slate-500 mt-1">{selectedQuestion.isStudentQuestion ? '답변 과정을 사진으로 찍어 업로드해주세요.' : '풀이 과정을 사진으로 찍어 업로드해주세요.'}</p></div>
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3 shadow-sm"><div className="bg-amber-100 p-2 rounded-full shrink-0 border border-amber-200"><Sparkles size={16} className="text-amber-600" /></div><div><h5 className="font-bold text-amber-900 text-sm mb-1">선생님의 당부 ✍️</h5><p className="text-xs text-amber-800 font-medium leading-relaxed">눈으로만 읽는 것보다 <b>직접 손으로 쓰며 고민하는 과정</b>에서 진짜 실력이 자라납니다. 백지에 정성껏 푼 나만의 풀이를 사진으로 찍어 올려주세요!</p></div></div>
+                    <div className="border-2 border-dashed border-indigo-200 rounded-3xl p-6 text-center bg-indigo-50/30 hover:bg-indigo-50/60 transition-colors">
                       {studentSolutionPreview ? (
-                        <div className="relative"><img src={studentSolutionPreview} alt="풀이 이미지" className="max-h-[200px] mx-auto rounded-xl border shadow-sm"/><button onClick={()=>{setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-3 -right-3 bg-red-500 text-white p-1.5 rounded-full shadow-lg"><X size={14}/></button></div>
+                        <div className="relative"><img src={studentSolutionPreview} alt="풀이 이미지" className="max-h-[200px] mx-auto rounded-xl border border-slate-200 shadow-sm"/><button onClick={()=>{setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-3 -right-3 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-full shadow-lg transition-colors"><X size={14}/></button></div>
                       ) : (
-                        <label className="cursor-pointer block py-8"><Upload className="mx-auto text-indigo-500 mb-3" size={32}/><span className="text-sm font-extrabold text-indigo-700 block">사진 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setStudentSolutionImage(files[0]); setStudentSolutionPreview(URL.createObjectURL(files[0]));}}} className="hidden"/></label>
+                        <label className="cursor-pointer block py-8"><Upload className="mx-auto text-indigo-500 mb-3" size={32}/><span className="text-sm font-extrabold text-indigo-700 block">{selectedQuestion.isStudentQuestion ? '답변 사진 첨부하기' : '풀이 사진 첨부하기'}</span><span className="text-[10px] text-slate-500 mt-1.5 block bg-white border border-slate-200 shadow-sm px-2 py-0.5 w-fit mx-auto rounded-full font-bold"><b>Ctrl+V</b> 캡처 붙여넣기 지원</span><input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setStudentSolutionImage(files[0]); setStudentSolutionPreview(URL.createObjectURL(files[0]));}}} className="hidden"/></label>
                       )}
                     </div>
                     {selectedQuestion.isChallenge && (
-                      <label className="flex items-start gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100 cursor-pointer"><input type="checkbox" checked={isSharedChecked} onChange={e=>setIsSharedChecked(e.target.checked)} className="mt-0.5 rounded text-indigo-600 w-4 h-4"/><div className="flex flex-col"><span className="text-sm font-extrabold text-indigo-900">전체 공개하기</span></div></label>
+                      <label className="flex items-start gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100 cursor-pointer shadow-sm hover:bg-indigo-100/50 transition-colors"><input type="checkbox" checked={isSharedChecked} onChange={e=>setIsSharedChecked(e.target.checked)} className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/><div className="flex flex-col"><span className="text-sm font-extrabold text-indigo-900">{selectedQuestion.isStudentQuestion ? '내 답변을 다른 친구들에게 공유합니다.' : '내 풀이를 챌린지 갤러리에 공유합니다.'}</span><span className="text-[10px] font-semibold text-indigo-600 mt-1">체크 시, 제출 후 다른 참가자들의 풀이를 열람하고 피드백할 수 있습니다.</span></div></label>
                     )}
-                    <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-4 bg-indigo-600 disabled:bg-slate-300 text-white rounded-2xl font-black text-sm shadow-xl transition-all">최종 제출하기</button>
+                    <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]">{selectedQuestion.isStudentQuestion ? '답변 최종 제출하기' : '풀이 최종 제출하기'}</button>
                   </div>
                 )}
               </div>
@@ -1226,157 +1358,73 @@ export default function App() {
         </div>
       )}
 
-      {/* 가입된 교사/학생 및 대기 중인 교사 편집 전용 모달 */}
-      {editQuestionModal && editingQuestion && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 my-8">
-            <div className="flex justify-between items-center mb-5 border-b pb-3">
-              <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2">
-                <Edit className="text-indigo-600" size={20}/>
-                <span>문제 세트 수정</span>
-                {editingQuestion.isStudentQuestion && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black">학생 질문</span>}
-              </h3>
-              <button onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="text-slate-400 p-1.5 rounded-full"><X size={18}/></button>
+      {/* ==============================================
+          💡 가이드북, 컨펌 및 앱 설치 모달 등 전역 팝업 UI
+      ============================================== */}
+
+      {appInstallModal && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 relative border border-slate-100">
+            <button onClick={() => setAppInstallModal(false)} className="absolute top-4 right-4 text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
+            <div className="text-center mb-5"><div className="bg-indigo-50 text-indigo-600 p-3.5 rounded-full w-fit mx-auto mb-2.5 border border-indigo-100 shadow-sm"><Download size={28} /></div><h3 className="font-extrabold text-lg text-slate-900">홈 화면에 바로가기 앱 설치</h3><p className="text-xs text-slate-500 mt-1">링크 입력 없이 스마트폰에서 바로 접속하세요!</p></div>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm"><h4 className="font-bold text-xs text-indigo-600 flex items-center gap-1.5 mb-2">🍎 아이폰 (Safari 브라우저)</h4><ol className="list-decimal pl-4 text-xs font-semibold text-slate-600 space-y-1"><li>Safari 하단 중앙의 <b className="text-slate-900 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm">공유(내보내기)</b> 버튼 탭</li><li>메뉴 목록에서 <b className="text-slate-900">홈 화면에 추가 (+)</b> 선택</li></ol></div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm"><h4 className="font-bold text-xs text-emerald-600 flex items-center gap-1.5 mb-2">🤖 안드로이드 (크롬 등)</h4><ol className="list-decimal pl-4 text-xs font-semibold text-slate-600 space-y-1"><li>브라우저 상단 <b className="text-slate-900 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm">더보기(፧)</b> 누르기</li><li><b className="text-slate-900">홈 화면에 추가</b> 탭</li></ol></div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm"><h4 className="font-bold text-xs text-slate-700 flex items-center gap-1.5 mb-2">💻 PC 브라우저</h4><p className="text-xs font-semibold text-slate-600">주소창 우측 <b className="text-slate-900 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm">앱 설치 아이콘(🖥️)</b> 클릭</p></div>
             </div>
-
-            <form onSubmit={handleUpdateQuestionSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">문제 타이틀</label>
-                <input 
-                  type="text" 
-                  value={editingQuestion.title} 
-                  onChange={e => setEditingQuestion({...editingQuestion, title: e.target.value})} 
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
-                  placeholder="예: 수능 기출 22번" 
-                  required 
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">해시태그 (Space / Enter)</label>
-                <div className="flex flex-wrap gap-2 p-2 border border-slate-300 bg-white rounded-xl focus-within:ring-2 focus-within:ring-indigo-500">
-                  {editingQuestion.tags.map((tag) => (
-                    <span key={tag} className="bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      #{tag} 
-                      <button type="button" onClick={() => setEditingQuestion({...editingQuestion, tags: editingQuestion.tags.filter(t => t !== tag)})}>✕</button>
-                    </span>
-                  ))}
-                  <input 
-                    type="text" 
-                    value={editingQuestion.currentTagInput} 
-                    onChange={e => setEditingQuestion({...editingQuestion, currentTagInput: e.target.value})} 
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault(); 
-                        const val = editingQuestion.currentTagInput.trim().replace(/^#/, '');
-                        if (val && !editingQuestion.tags.includes(val)) {
-                          setEditingQuestion({
-                            ...editingQuestion, 
-                            tags: [...editingQuestion.tags, val], 
-                            currentTagInput: ''
-                          });
-                        }
-                      }
-                    }} 
-                    className="flex-1 outline-none text-xs min-w-[100px] bg-transparent text-slate-900 placeholder-slate-400" 
-                    placeholder="태그 추가..." 
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isPinned} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isPinned: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">상단 고정 (공지)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={editingQuestion.isChallenge} 
-                    onChange={e => setEditingQuestion({...editingQuestion, isChallenge: e.target.checked})} 
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  /> 
-                  <span className="text-xs font-bold text-slate-700">공개 챌린지</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">이미지 목록 (제거하거나 새로 추가 가능)</label>
-                <div 
-                  onDragOver={e => e.preventDefault()} 
-                  onDrop={(e) => {
-                    e.preventDefault(); 
-                    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-                    if (files.length > 0) {
-                      setEditingQuestion(prev => prev ? ({
-                        ...prev,
-                        items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                      }) : null);
-                    }
-                  }} 
-                  className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50"
-                >
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {editingQuestion.items.map((item, idx) => (
-                      <div key={idx} className="relative group border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                        <img src={item.url} alt="미리보기" className="h-16 w-full object-cover cursor-zoom-in" onClick={() => openLightbox(item.url, '수정 미리보기')}/>
-                        <button 
-                          type="button" 
-                          onClick={() => setEditingQuestion({
-                            ...editingQuestion,
-                            items: editingQuestion.items.filter((_, i) => i !== idx)
-                          })} 
-                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"
-                        >
-                          <X size={10}/>
-                        </button>
-                      </div>
-                    ))}
-                    
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-lg hover:bg-indigo-50 cursor-pointer h-16 transition-colors">
-                      <Plus size={16} className="text-indigo-500" />
-                      <span className="text-[9px] font-bold text-indigo-600">추가</span>
-                      <input 
-                        type="file" 
-                        multiple 
-                        accept="image/*" 
-                        onChange={(e) => {
-                          const files = e.target.files ? Array.from(e.target.files) : [];
-                          if (files.length > 0) {
-                            setEditingQuestion(prev => prev ? ({
-                              ...prev,
-                              items: [...prev.items, ...files.map(file => ({ url: URL.createObjectURL(file), file }))]
-                            }) : null);
-                          }
-                        }} 
-                        className="hidden" 
-                      />
-                    </label>
-                  </div>
-                  <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 추가 등록으로 제어해 주세요!</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 pt-3">
-                <button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button>
-              </div>
-            </form>
+            <button onClick={() => setAppInstallModal(false)} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold mt-5 text-xs shadow-md transition-colors">확인 완료</button>
           </div>
         </div>
       )}
 
-      {/* 💡 라이트박스 모달을 가장 하단으로 이동하여 스택 컨텍스트(Stacking Context) 버그 해결 */}
+      {tutorial.show && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 z-[200]">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl flex flex-col items-center text-center relative overflow-hidden border border-slate-200">
+            <div className="absolute top-0 w-full h-32 bg-gradient-to-b from-indigo-50 to-white -z-10"></div>
+            <div className="flex gap-2 mb-6">
+              {TUTORIAL_STEPS[tutorial.role === 'teacher' ? 'teacher' : 'student'].map((_, idx) => (
+                <div key={idx} className={`w-2.5 h-2.5 rounded-full transition-all shadow-inner border border-slate-200 ${idx === tutorial.step ? 'bg-indigo-600 scale-125 border-indigo-700' : 'bg-slate-200'}`}></div>
+              ))}
+            </div>
+            <div className="mb-8 min-h-[160px] flex flex-col justify-center w-full">
+              {TUTORIAL_STEPS[tutorial.role === 'teacher' ? 'teacher' : 'student'][tutorial.step].icon}
+              <h3 className="text-xl font-extrabold text-slate-900 mb-3">{TUTORIAL_STEPS[tutorial.role === 'teacher' ? 'teacher' : 'student'][tutorial.step].title}</h3>
+              <p className="text-sm text-slate-600 leading-relaxed font-semibold">{TUTORIAL_STEPS[tutorial.role === 'teacher' ? 'teacher' : 'student'][tutorial.step].desc}</p>
+            </div>
+            <div className="flex items-center justify-between w-full border-t border-slate-200 pt-5 mt-auto">
+              <button onClick={completeTutorial} className="text-slate-400 hover:text-slate-600 text-xs font-bold px-2 py-1 transition-colors">건너뛰기</button>
+              <div className="flex gap-2">
+                {tutorial.step > 0 && <button onClick={() => setTutorial({ ...tutorial, step: tutorial.step - 1 })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-sm"><ArrowLeft size={14} className="inline mr-1"/> 이전</button>}
+                {tutorial.step < TUTORIAL_STEPS[tutorial.role === 'teacher' ? 'teacher' : 'student'].length - 1 ? (
+                  <button onClick={() => setTutorial({ ...tutorial, step: tutorial.step + 1 })} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors">다음 <ArrowRight size={14} className="inline ml-1"/></button>
+                ) : (
+                  <button onClick={completeTutorial} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md animate-bounce transition-colors"><CheckCircle size={14} className="inline mr-1"/> 시작하기</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.show && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[250]">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center border border-slate-200">
+            <div className={`p-4 rounded-full w-fit mx-auto mb-4 border shadow-inner ${confirmModal.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}><AlertCircle size={32} /></div>
+            <h3 className="font-bold text-lg mb-2 text-slate-900">{confirmModal.title}</h3>
+            <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">{confirmModal.message}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmModal({ ...confirmModal, show: false, onConfirm: null })} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors shadow-sm text-xs">취소</button>
+              <button onClick={() => confirmModal.onConfirm?.()} className={`flex-1 py-3 text-white rounded-xl font-bold transition-colors shadow-md text-xs ${confirmModal.isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {lightbox.show && (
-        <div onClick={() => setLightbox({ show: false, imageUrl: '', title: '' })} className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-[100] cursor-zoom-out">
-          <button className="absolute top-5 right-5 text-white bg-slate-800 px-3 py-1.5 rounded-full font-bold text-xs">✕ 닫기</button>
+        <div onClick={() => setLightbox({ show: false, imageUrl: '', title: '' })} className="fixed inset-0 bg-black/95 z-[300] flex flex-col items-center justify-center p-4 cursor-zoom-out backdrop-blur-md">
+          <button className="absolute top-5 right-5 text-white bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-full font-bold text-xs shadow-lg transition-colors border border-slate-600">✕ 닫기</button>
           <img src={lightbox.imageUrl} alt="확대" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border-4 border-slate-800/50" />
-          <div className="mt-4 text-center"><p className="text-white font-extrabold text-base">{lightbox.title}</p></div>
+          <div className="mt-4 text-center"><p className="text-white font-extrabold text-base tracking-wide bg-slate-900/50 px-4 py-1.5 rounded-full">{lightbox.title}</p></div>
         </div>
       )}
 
