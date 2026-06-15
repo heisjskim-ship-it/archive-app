@@ -144,7 +144,12 @@ const TUTORIAL_STEPS: { [key: string]: TutorialStep[] } = {
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null); 
-  const [currentUser, setCurrentUser] = useState<UserData | null>(null); 
+  const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
+    if (typeof window !== 'undefined' && window.localStorage.getItem('adminSession') === 'true') {
+      return { id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' };
+    }
+    return null;
+  }); 
   const [isLoading, setIsLoading] = useState<boolean>(false); 
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
@@ -225,21 +230,24 @@ export default function App() {
     } else setAppInstallModal(true);
   };
 
+  // 🔥 Firebase 초기 인증 및 싱크 오류 복구
   useEffect(() => {
-    const initAuth = async () => {
-      if (isCanvas) {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      // Iframe(캔버스) 환경에서 기존 로그인 세션을 덮어쓰지 않도록 개선
+      if (!user && isCanvas) {
         try {
           // @ts-ignore
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-          else await signInAnonymously(auth);
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
         } catch (err) {
-          try { await signInAnonymously(auth); } catch (e) {}
+          try { await signInAnonymously(auth); } catch (e) { setIsAuthLoading(false); }
         }
+        return; // 익명 로그인 성공 후 트리거될 다음 이벤트를 기다림
       }
-    };
-    initAuth();
-    
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+
       setFirebaseUser(user);
       if (user && !user.isAnonymous) {
         try {
@@ -250,7 +258,9 @@ export default function App() {
             else setCurrentUser({ id: user.uid, ...userData });
           }
         } catch (err) {}
-      } else setCurrentUser(prev => (prev?.id === 'teacher_admin' ? prev : null));
+      } else {
+        setCurrentUser(prev => (prev?.id === 'teacher_admin' ? prev : null));
+      }
       setIsAuthLoading(false);
     });
     return () => unsubscribeAuth();
@@ -404,6 +414,7 @@ export default function App() {
     try {
       await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
       if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
+        localStorage.setItem('adminSession', 'true');
         setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
         setAuthModal({ show: false, mode: 'student_login' }); alertMessage('최고 관리자 모드로 로그인했습니다.'); return;
       }
@@ -427,7 +438,9 @@ export default function App() {
   const handleLogout = async () => {
     setIsLoading(true);
     try {
-      await signOut(auth); setCurrentUser(null); setStudentQuestionSearch(''); setSubmissionSearch(''); setTeacherQuestionSearch(''); setTeacherSubTab('content'); setViewingSubmission(null); setSelectedQuestion(null);
+      await signOut(auth); 
+      localStorage.removeItem('adminSession');
+      setCurrentUser(null); setStudentQuestionSearch(''); setSubmissionSearch(''); setTeacherQuestionSearch(''); setTeacherSubTab('content'); setViewingSubmission(null); setSelectedQuestion(null);
       alertMessage('안전하게 로그아웃되었습니다.');
     } catch (err) {} finally { setIsLoading(false); }
   };
@@ -787,7 +800,7 @@ export default function App() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">이미지 업로드 (Ctrl+V)</label>
-                      <div onDragOver={e=>e.preventDefault()} onDrop={handleDropQuestion} className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50/50">
+                      <div onDragOver={handleDropQuestion} onDrop={handleDropQuestion} className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
                         {newQuestion.imagePreviews.length > 0 ? (
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             {newQuestion.imagePreviews.map((preview, idx) => (
@@ -807,6 +820,42 @@ export default function App() {
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
+                      <span>등록된 기출/질문 세트</span>
+                      <div className="relative max-w-[180px] w-full">
+                        <Search className="absolute left-2.5 top-2 text-slate-400" size={14}/>
+                        <input type="text" value={teacherQuestionSearch} onChange={e => setTeacherQuestionSearch(e.target.value)} placeholder="제목, #태그 검색" className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                    </h3>
+                    <div className="divide-y divide-slate-100 max-h-[250px] overflow-y-auto pr-1">
+                      {filteredTeacherQuestions.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 text-xs font-bold">검색 결과가 없습니다.</div>
+                      ) : (
+                        filteredTeacherQuestions.map(q => (
+                          <div key={q.id} className="py-2.5 flex items-center justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors">
+                            <div className="flex items-center gap-3">
+                              <img src={q.imageUrls[0]} className="w-10 h-10 object-cover rounded border border-slate-200 shadow-sm cursor-zoom-in" onClick={()=>handleOpenQuestion(q.id)}/>
+                              <div>
+                                <div className="flex gap-1 mb-0.5">
+                                  {q.isPinned && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold">고정</span>}
+                                  {q.isChallenge && <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 rounded font-bold">챌린지</span>}
+                                  {q.tags.includes('질문있어요') && <span className="text-[8px] bg-amber-500 text-white px-1 rounded font-bold flex items-center gap-0.5"><MessageCircle size={8}/>질문</span>}
+                                  {q.imageUrls.length > 1 && <span className="text-[8px] bg-slate-100 text-slate-600 px-1 rounded font-bold border">{q.imageUrls.length}장</span>}
+                                </div>
+                                <h4 className="text-xs font-bold hover:underline cursor-pointer text-slate-800" onClick={()=>handleOpenQuestion(q.id)}>{q.title}</h4>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => openEditQuestionModal(q)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="수정하기"><Edit size={16}/></button>
+                              <button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="삭제하기"><Trash2 size={16}/></button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
                       <span>🚀 실시간 활동 모니터링 센터</span>
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">Total: {dashboardItems.length}</span>
@@ -823,7 +872,7 @@ export default function App() {
                             const matchedQuestion = questions.find(q => q.id === item.questionId);
                             return (
                               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-3 flex items-center gap-1.5">
+                                <td className="p-3 flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
                                   <span className={`px-2 py-0.5 rounded-md font-black text-[9px] shadow-sm ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span>
                                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-sm ${item.status === '답변 완료' || item.status === '피드백 완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{item.status}</span>
                                 </td>
@@ -865,7 +914,7 @@ export default function App() {
                 <div className="flex justify-between items-center mt-8"><h3 className="font-bold text-lg text-slate-900">가입 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">아이디</th><th className="p-3.5 text-center font-bold text-slate-600">로그인</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
+                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">아이디</th><th className="p-3.5 text-center font-bold text-slate-600">로그인 횟수</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {students.map(st => (
                         <tr key={st.id} className="hover:bg-slate-50 transition-colors">
@@ -985,7 +1034,7 @@ export default function App() {
           💡 모든 전역 모달 UI를 렌더링 최하단에 안전하게 배치 
       ============================================== */}
 
-      {/* 1. 인증(Auth) 모달 - Bug 2 텍스트 색상 및 배경 강제 적용 완료 */}
+      {/* 1. 인증(Auth) 모달 */}
       {authModal.show && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
@@ -1105,7 +1154,8 @@ export default function App() {
                 </div>
                 <span className="text-[10px] text-slate-400 block font-semibold">순서 변경은 제거 후 재등록하거나, 이미지 복사/붙여넣기 제어해 주세요!</span>
               </div>
-              <div className="flex gap-2.5 pt-3"><button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-colors">정보 수정 완료</button></div>
+              <div className="flex gap-2.5 pt-3"><button type="button" onClick={() => { setEditQuestionModal(false); setEditingQuestion(null); }} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors">취소</button>
+              <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-indigo-100">수정 완료</button></div>
             </form>
           </div>
         </div>
