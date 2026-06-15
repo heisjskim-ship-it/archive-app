@@ -25,6 +25,7 @@ export interface Question {
   id: string; title: string; tags: string[]; imageUrls: string[];
   createdAt: string; teacherName: string; teacherId: string;
   isPinned: boolean; isChallenge: boolean; isStudentQuestion?: boolean;
+  feedbackImageUrl?: string; feedbackText?: string; feedbackAt?: string; status?: string;
 }
 
 interface DraftStudent { rowId: number; no: string; name: string; username: string; }
@@ -303,6 +304,7 @@ export default function App() {
         else if (currentUser?.role === 'student' && viewingSubmission && isEditingSolution) { setStudentSolutionImage(imageFile); setStudentSolutionPreview(preview); alertMessage('📌 수정용 클립보드 이미지 첨부'); } 
         else if (currentUser?.role === 'student' && viewingSubmission && !isEditingSolution) { setPeerCommentImage(imageFile); setPeerCommentImagePreview(preview); alertMessage('📌 댓글용 이미지 첨부'); } 
         else if (currentUser?.role === 'teacher' && viewingSubmission) { setFeedbackInputImage(imageFile); setFeedbackInputImagePreview(preview); alertMessage('📌 클립보드 첨삭 추가'); }
+        else if (currentUser?.role === 'teacher' && !viewingSubmission && selectedQuestion.isStudentQuestion) { setFeedbackInputImage(imageFile); setFeedbackInputImagePreview(preview); alertMessage('📌 질문 코칭 이미지 추가'); }
       } else if (currentUser?.role === 'teacher' && teacherSubTab === 'content') {
         setNewQuestion(prev => ({ ...prev, images: [...prev.images, imageFile!], imagePreviews: [...prev.imagePreviews, preview] }));
         alertMessage('📌 클립보드 기출문제 추가');
@@ -585,6 +587,20 @@ export default function App() {
     } catch (err: any) { alertMessage(err.message); } finally { setIsLoading(false); }
   };
 
+  const handleSaveQuestionFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuestion) return;
+    if (!feedbackInputText.trim() && !feedbackInputImage) return alertMessage('코멘트나 첨삭 이미지를 넣어주세요.');
+    setIsLoading(true);
+    try {
+      let finalFeedbackUrl = selectedQuestion.feedbackImageUrl || '';
+      if (feedbackInputImage) finalFeedbackUrl = await uploadToCloudinary(feedbackInputImage);
+      await updateDoc(doc(getColRef('questions'), selectedQuestion.id), { feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: new Date().toISOString(), status: '답변 완료' });
+      alertMessage('질문에 대한 코칭 답변이 전송되었습니다!');
+      setFeedbackInputText(''); setFeedbackInputImage(null); setFeedbackInputImagePreview(''); setSelectedQuestion(null);
+    } catch (err: any) { alertMessage('답변 전송 실패: ' + err.message); } finally { setIsLoading(false); }
+  };
+
   const handlePeerCommentSubmit = async (e: React.FormEvent, targetSubId: string) => {
     e.preventDefault();
     if (!currentUser || (!peerCommentInput.trim() && !peerCommentImage)) return; 
@@ -600,7 +616,7 @@ export default function App() {
 
   const dashboardItems = [
     ...submissions.map(s => ({ ...s, type: 'SOLVE' as const, time: s.submittedAt })),
-    ...questions.filter(q => q.isStudentQuestion).map(q => ({ id: q.id, questionId: q.id, studentName: q.teacherName, studentId: q.teacherId, status: '질문 게시됨', type: 'ASK' as const, time: q.createdAt, title: q.title }))
+    ...questions.filter(q => q.isStudentQuestion).map(q => ({ id: q.id, questionId: q.id, studentName: q.teacherName, studentId: q.teacherId, status: q.status || '답변 대기', type: 'ASK' as const, time: q.createdAt, title: q.title }))
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   const handleOpenQuestion = (qId: string) => {
@@ -791,43 +807,7 @@ export default function App() {
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
-                      <span>등록된 기출/질문 세트</span>
-                      <div className="relative max-w-[180px] w-full">
-                        <Search className="absolute left-2.5 top-2 text-slate-400" size={14}/>
-                        <input type="text" value={teacherQuestionSearch} onChange={e => setTeacherQuestionSearch(e.target.value)} placeholder="제목, #태그 검색" className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" />
-                      </div>
-                    </h3>
-                    <div className="divide-y divide-slate-100 max-h-[250px] overflow-y-auto pr-1">
-                      {filteredTeacherQuestions.length === 0 ? (
-                        <div className="text-center py-8 text-slate-400 text-xs font-bold">검색 결과가 없습니다.</div>
-                      ) : (
-                        filteredTeacherQuestions.map(q => (
-                          <div key={q.id} className="py-2.5 flex items-center justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors">
-                            <div className="flex items-center gap-3">
-                              <img src={q.imageUrls[0]} className="w-10 h-10 object-cover rounded border border-slate-200 shadow-sm cursor-zoom-in" onClick={()=>handleOpenQuestion(q.id)}/>
-                              <div>
-                                <div className="flex gap-1 mb-0.5">
-                                  {q.isPinned && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold">고정</span>}
-                                  {q.isChallenge && <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 rounded font-bold">챌린지</span>}
-                                  {q.tags.includes('질문있어요') && <span className="text-[8px] bg-amber-500 text-white px-1 rounded font-bold flex items-center gap-0.5"><MessageCircle size={8}/>질문</span>}
-                                  {q.imageUrls.length > 1 && <span className="text-[8px] bg-slate-100 text-slate-600 px-1 rounded font-bold border">{q.imageUrls.length}장</span>}
-                                </div>
-                                <h4 className="text-xs font-bold hover:underline cursor-pointer text-slate-800" onClick={()=>handleOpenQuestion(q.id)}>{q.title}</h4>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button onClick={() => openEditQuestionModal(q)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="수정하기"><Edit size={16}/></button>
-                              <button onClick={()=>handleDeleteQuestionConfirm(q.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="삭제하기"><Trash2 size={16}/></button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="font-bold text-lg text-slate-900 mb-4 flex items-center justify-between">
-                      <span>🚀 학급 활동 실시간 모니터링 센터</span>
+                      <span>🚀 실시간 활동 모니터링 센터</span>
                       <div className="flex items-center gap-2">
                         <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">Total: {dashboardItems.length}</span>
                         <input type="text" value={submissionSearch} onChange={e=>setSubmissionSearch(e.target.value)} placeholder="학생명, 검색" className="px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none w-28 md:w-36" />
@@ -843,7 +823,10 @@ export default function App() {
                             const matchedQuestion = questions.find(q => q.id === item.questionId);
                             return (
                               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-3"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] shadow-sm ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span></td>
+                                <td className="p-3 flex items-center gap-1.5">
+                                  <span className={`px-2 py-0.5 rounded-md font-black text-[9px] shadow-sm ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-sm ${item.status === '답변 완료' || item.status === '피드백 완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{item.status}</span>
+                                </td>
                                 <td className="p-3 font-bold text-slate-800">{item.studentName}</td>
                                 <td className="p-3 truncate max-w-[150px] font-medium">{item.title || matchedQuestion?.title || '삭제된 문항'}</td>
                                 <td className="p-3 text-center font-mono text-[10px] text-slate-500">{formatDateTime(item.time)}</td>
@@ -1158,6 +1141,15 @@ export default function App() {
                   )}
                 </div>
 
+                {selectedQuestion.isStudentQuestion && (selectedQuestion.feedbackText || selectedQuestion.feedbackImageUrl) && (
+                  <div className="mt-2 mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 shadow-sm animate-fade-in">
+                    <h4 className="text-sm font-extrabold text-indigo-700 mb-3 flex items-center gap-1"><Sparkles size={16}/> 선생님의 명쾌한 코칭 답변</h4>
+                    {selectedQuestion.feedbackImageUrl && <img src={selectedQuestion.feedbackImageUrl} className="w-full rounded-xl border border-indigo-200 mb-3 shadow-sm cursor-zoom-in hover:opacity-90 transition-opacity bg-white" onClick={()=>openLightbox(selectedQuestion.feedbackImageUrl!, '선생님 답변')} />}
+                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{selectedQuestion.feedbackText}</p>
+                    <p className="text-[10px] text-indigo-400 mt-3 text-right font-mono font-bold">{formatDateTime(selectedQuestion.feedbackAt)}</p>
+                  </div>
+                )}
+
                 {selectedQuestion.isChallenge && currentUser?.role === 'student' && submissions.some(s => s.questionId === selectedQuestion.id && s.studentId === currentUser.id) && (
                   <div className="mt-auto border-t pt-5 border-slate-200">
                     <h4 className="text-sm font-extrabold text-indigo-700 mb-3 flex items-center gap-1"><Users size={16}/> 참가자 갤러리 (친구 풀이 보기)</h4>
@@ -1218,6 +1210,20 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="h-full flex flex-col animate-fade-in">
+                      {selectedQuestion.isStudentQuestion && (
+                        <div className="mb-6 bg-indigo-50 p-4 rounded-2xl border border-indigo-200 shrink-0 shadow-sm">
+                          <h4 className="text-sm font-extrabold text-indigo-700 mb-3 flex items-center gap-1"><Sparkles size={16}/> 학생 질문에 직접 코칭하기</h4>
+                          <div className={`border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-colors mb-3 bg-white ${feedbackInputImagePreview ? 'border-emerald-400' : 'border-indigo-200 hover:bg-indigo-50/50'}`}>
+                            {feedbackInputImagePreview ? (
+                              <div className="relative"><img src={feedbackInputImagePreview} className="max-h-24 mx-auto rounded shadow-sm"/><button onClick={(e)=>{e.stopPropagation(); setFeedbackInputImagePreview(''); setFeedbackInputImage(null);}} className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full shadow-md"><X size={12}/></button></div>
+                            ) : (
+                              <label className="cursor-pointer block py-2"><Upload className="mx-auto text-indigo-400 mb-1.5" size={20}/><span className="text-[10px] font-bold text-indigo-600 block">해설 이미지 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setFeedbackInputImage(f[0]); setFeedbackInputImagePreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
+                            )}
+                          </div>
+                          <textarea value={feedbackInputText} onChange={e=>setFeedbackInputText(e.target.value)} placeholder="학생의 질문에 대한 답변이나 힌트를 남겨주세요." className="w-full p-3 rounded-xl border border-indigo-200 bg-white text-slate-900 placeholder-slate-400 text-xs h-24 outline-none focus:ring-2 focus:ring-indigo-500 resize-none shadow-sm"/>
+                          <button onClick={handleSaveQuestionFeedbackSubmit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl mt-3 shadow-md transition-colors text-xs">{selectedQuestion.feedbackText || selectedQuestion.feedbackImageUrl ? '코칭 답변 수정하기' : '코칭 답변 전송'}</button>
+                        </div>
+                      )}
                       <h4 className="font-extrabold text-emerald-600 mb-4 flex items-center gap-1 text-sm"><Users size={16}/> 제출된 학생 풀이 목록</h4>
                       {(() => {
                         const qSubs = submissions.filter(s => s.questionId === selectedQuestion.id);
