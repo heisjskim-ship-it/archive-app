@@ -63,7 +63,7 @@ const X: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http:/
 const ArrowRight: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
 const ArrowLeft: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>;
 const Loader2: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>;
-const Edit: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>;
+const Edit: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4zM11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg>;
 const Download: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
 const Award: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>;
 const Paperclip: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>;
@@ -302,7 +302,6 @@ export default function App() {
           const userDoc = await getDoc(doc(getColRef('users'), user.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data() as UserData;
-            // 승인 대기 중인 계정 강제 로그아웃
             if (userData.role === 'pending_teacher' || userData.role === 'pending_student') {
               await signOut(auth);
               setCurrentUser(null);
@@ -341,10 +340,16 @@ export default function App() {
 
     setIsLoading(true);
 
-    // 1. 누구나 읽을 수 있는 공개 데이터 (Questions, Users)
+    // 1. 누구나 읽을 수 있는 데이터 (Questions, Users)
     const unsubQ = onSnapshot(getColRef('questions'), 
-      (snap) => setQuestions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Question[]),
-      (err) => console.error("Questions 권한 오류:", err)
+      (snap) => {
+        setQuestions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Question[]);
+        setIsLoading(false);
+      },
+      (err: any) => {
+        if (err.code !== 'permission-denied') console.error("Questions 권한 오류:", err);
+        setIsLoading(false);
+      }
     );
     
     const unsubU = onSnapshot(getColRef('users'), 
@@ -352,19 +357,24 @@ export default function App() {
         const uList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserData[];
         setAllUsers(uList); 
         setStudents(uList.filter(u => u.role === 'student')); 
-        setIsLoading(false);
       }, 
-      (err) => {
-        console.error("Users 권한 오류:", err);
-        setIsLoading(false);
+      (err: any) => {
+        if (err.code !== 'permission-denied') console.error("Users 권한 오류:", err);
       }
     );
 
     // 2. 로그인된 사용자만 읽을 수 있는 보안 데이터 (Submissions)
-    const unsubS = onSnapshot(getColRef('submissions'), 
-      (snap) => setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Submission[]),
-      (err) => console.error("Submissions 권한 오류:", err)
-    );
+    let unsubS = () => {};
+    if (firebaseUser) {
+      unsubS = onSnapshot(getColRef('submissions'), 
+        (snap) => setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Submission[]),
+        (err: any) => {
+          if (err.code !== 'permission-denied') console.error("Submissions 권한 오류:", err);
+        }
+      );
+    } else {
+      setSubmissions([]); // 로그아웃 상태일 때 초기화
+    }
 
     return () => { unsubQ(); unsubS(); unsubU(); };
   }, [firebaseUser, isAuthLoading]);
@@ -477,7 +487,7 @@ export default function App() {
 
   const generateEmail = (username: string) => `${username}@archive.edu`;
 
-  // 💡 아이디 유효성 검사 (400 Bad Request 에러 방지용)
+  // 💡 400 에러 방지: 아이디 영문/숫자 검증
   const validateSignUpId = (id: string) => {
     const idRegex = /^[a-zA-Z0-9]+$/;
     return idRegex.test(id.trim());
@@ -486,7 +496,7 @@ export default function App() {
   const handleStudentSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signUpNo.trim() || !signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
-    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용 가능합니다.');
+    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용할 수 있습니다.');
     if (signUpPw.trim().length < 6) return alertMessage('보안을 위해 비밀번호는 최소 6자 이상으로 설정해 주세요! 🔐');
     setIsLoading(true);
     try {
@@ -508,7 +518,7 @@ export default function App() {
   const handleTeacherSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
-    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용 가능합니다.');
+    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용할 수 있습니다.');
     if (signUpPw.trim().length < 6) return alertMessage('보안을 위해 비밀번호는 최소 6자 이상으로 설정해 주세요! 🔐');
     setIsLoading(true);
     try {
@@ -554,7 +564,7 @@ export default function App() {
     finally { setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); }
   };
 
-  // 💡 팝업 차단(COOP) 에러 우회 로직이 포함된 구글 로그인 실행 함수
+  // 💡 COOP 에러 방지용 리다이렉트 구글 로그인
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
@@ -563,7 +573,6 @@ export default function App() {
         await handleGoogleResult(result);
         setIsLoading(false);
       } else {
-        // Vercel 환경: COOP/COEP 정책 이슈를 완전히 우회하는 리다이렉트 방식 사용
         await signInWithRedirect(auth, googleProvider);
       }
     } catch (error: any) {
