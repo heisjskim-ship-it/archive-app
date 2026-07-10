@@ -76,7 +76,7 @@ import {
   getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   setPersistence, browserLocalPersistence, browserSessionPersistence, User as FirebaseUser,
-  GoogleAuthProvider, signInWithPopup
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc, getDoc, CollectionReference, DocumentData
@@ -242,6 +242,30 @@ export default function App() {
     } else setAppInstallModal(true);
   };
 
+  // 💡 구글 소셜 로그인 연동 핸들러: 신규 유저일 경우 역할 선택 화면으로 이동
+  const handleGoogleResult = async (result: any) => {
+    const user = result.user;
+    const userDocRef = doc(getColRef('users'), user.uid);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data() as UserData;
+      if (userData.role === 'pending_teacher' || userData.role === 'pending_student') {
+        await signOut(auth); localStorage.removeItem('savedUser');
+        alertMessage('아직 가입 승인이 완료되지 않았습니다.');
+      } else {
+        const loggedUser = { id: user.uid, ...userData };
+        setCurrentUser(loggedUser);
+        localStorage.setItem('savedUser', JSON.stringify(loggedUser));
+        alertMessage(`반가워요, ${userData.name} 님!`);
+        setAuthModal({ show: false, mode: 'student_login' });
+      }
+    } else {
+      setPendingGoogleUser(user);
+      setAuthModal({ show: true, mode: 'role_selection' });
+    }
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -253,6 +277,23 @@ export default function App() {
       }
     };
     initAuth();
+
+    // 💡 COOP/COEP 에러 및 모바일 호환성 해결: Vercel 배포 시 구글 Redirect 결과 처리
+    const checkRedirect = async () => {
+      if (isCanvas) return;
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          await handleGoogleResult(result);
+        }
+      } catch (error: any) {
+        console.error("Redirect Error:", error);
+        if (error.code === 'auth/unauthorized-domain') {
+          alertMessage('Vercel 도메인이 Firebase에 등록되지 않았습니다.');
+        }
+      }
+    };
+    checkRedirect();
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
@@ -289,6 +330,7 @@ export default function App() {
 
   // 💡 보안 권한 에러 해결: FirebaseUser 로그인 상태에 따라 onSnapshot 동적 구독
   useEffect(() => {
+    if (isAuthLoading) return;
     if (!firebaseUser) {
       setQuestions([]);
       setSubmissions([]);
@@ -325,7 +367,7 @@ export default function App() {
     );
 
     return () => { unsubQ(); unsubS(); unsubU(); };
-  }, [firebaseUser]);
+  }, [firebaseUser, isAuthLoading]);
 
   useEffect(() => {
     setQImageIdx(0); setIsEditingSolution(false);
@@ -435,9 +477,16 @@ export default function App() {
 
   const generateEmail = (username: string) => `${username}@archive.edu`;
 
+  // 💡 아이디 유효성 검사 (400 Bad Request 에러 방지용)
+  const validateSignUpId = (id: string) => {
+    const idRegex = /^[a-zA-Z0-9]+$/;
+    return idRegex.test(id.trim());
+  };
+
   const handleStudentSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signUpNo.trim() || !signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
+    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용 가능합니다.');
     if (signUpPw.trim().length < 6) return alertMessage('보안을 위해 비밀번호는 최소 6자 이상으로 설정해 주세요! 🔐');
     setIsLoading(true);
     try {
@@ -459,11 +508,12 @@ export default function App() {
   const handleTeacherSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
+    if (!validateSignUpId(signUpId)) return alertMessage('아이디는 영문과 숫자만 사용 가능합니다.');
     if (signUpPw.trim().length < 6) return alertMessage('보안을 위해 비밀번호는 최소 6자 이상으로 설정해 주세요! 🔐');
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, generateEmail(signUpId.trim()), signUpPw.trim());
-      const newTeacherData: Omit<UserData, 'id'> = { role: 'pending_teacher', name: signUpName.trim(), username: signUpId.trim(), joinDate: new DatetoISOString().split('T')[0], loginCount: 0, status: '승인대기' };
+      const newTeacherData: Omit<UserData, 'id'> = { role: 'pending_teacher', name: signUpName.trim(), username: signUpId.trim(), joinDate: new Date().toISOString().split('T')[0], loginCount: 0, status: '승인대기' };
       await setDoc(doc(getColRef('users'), userCredential.user.uid), newTeacherData);
       await signOut(auth); setAuthModal({ show: false, mode: 'student_login' });
       alertMessage('✨ [' + signUpName + '] 선생님의 권한 신청이 정상 등록되었습니다! 최고 관리자(admin) 승인 후 로그인이 가능합니다.');
@@ -504,44 +554,25 @@ export default function App() {
     finally { setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); }
   };
 
-  // 💡 구글 소셜 로그인 연동 핸들러: 에러 핸들링 보강
+  // 💡 팝업 차단(COOP) 에러 우회 로직이 포함된 구글 로그인 실행 함수
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      const userDocRef = doc(getColRef('users'), user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as UserData;
-        if (userData.role === 'pending_teacher') {
-          await signOut(auth); localStorage.removeItem('savedUser');
-          throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 교사 계정입니다.');
-        }
-        if (userData.role === 'pending_student') {
-          await signOut(auth); localStorage.removeItem('savedUser');
-          throw new Error('아직 선생님의 가입 승인을 받지 못한 학생 계정입니다.');
-        }
-        const loggedUser = { id: user.uid, ...userData };
-        setCurrentUser(loggedUser);
-        localStorage.setItem('savedUser', JSON.stringify(loggedUser));
-        alertMessage(`반가워요, ${userData.name} ${userData.role === 'teacher' ? '선생님!' : '학생!'}`);
-        setAuthModal({ show: false, mode: 'student_login' });
+      if (isCanvas) {
+        const result = await signInWithPopup(auth, googleProvider);
+        await handleGoogleResult(result);
+        setIsLoading(false);
       } else {
-        // DB에 없는 신규 유저인 경우 -> 역할 선택 모달 띄우기
-        setPendingGoogleUser(user);
-        setAuthModal({ show: true, mode: 'role_selection' });
+        // Vercel 환경: COOP/COEP 정책 이슈를 완전히 우회하는 리다이렉트 방식 사용
+        await signInWithRedirect(auth, googleProvider);
       }
     } catch (error: any) {
       console.error("구글 로그인 에러:", error);
-      // auth/unauthorized-domain 에러를 깔끔하게 안내
       if (error.code === 'auth/unauthorized-domain') {
-        alertMessage('접속하신 Vercel 도메인이 Firebase에 승인되지 않았습니다. Firebase 콘솔에서 도메인을 추가해주세요.');
-      } else {
+        alertMessage('접속하신 도메인이 Firebase에 승인되지 않았습니다.');
+      } else if (error.code !== 'auth/popup-closed-by-user') {
         alertMessage(error.message || '구글 로그인에 실패했습니다.');
       }
-    } finally {
       setIsLoading(false);
     }
   };
