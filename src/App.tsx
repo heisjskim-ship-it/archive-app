@@ -330,17 +330,11 @@ export default function App() {
   // 💡 보안 권한 에러 해결: FirebaseUser 로그인 상태에 따라 onSnapshot 동적 구독
   useEffect(() => {
     if (isAuthLoading) return;
-    if (!firebaseUser) {
-      setQuestions([]);
-      setSubmissions([]);
-      setAllUsers([]);
-      setStudents([]);
-      return; 
-    }
 
     setIsLoading(true);
 
     // 1. 누구나 읽을 수 있는 데이터 (Questions, Users)
+    // 💡 방어벽 해제: 로그인 여부(firebaseUser)와 관계없이 기출문제와 랭킹 목록은 무조건 불러옵니다.
     const unsubQ = onSnapshot(getColRef('questions'), 
       (snap) => {
         setQuestions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Question[]);
@@ -579,8 +573,10 @@ export default function App() {
       console.error("구글 로그인 에러:", error);
       if (error.code === 'auth/unauthorized-domain') {
         alertMessage('접속하신 도메인이 Firebase에 승인되지 않았습니다.');
+      } else if (error.code === 'auth/operation-not-allowed') {
+        alertMessage('Firebase에서 구글 로그인이 비활성화되어 있습니다.');
       } else if (error.code !== 'auth/popup-closed-by-user') {
-        alertMessage(error.message || '구글 로그인에 실패했습니다.');
+        alertMessage(error.message || '구글 로그인에 실패했습니다. (지원 이메일 설정을 확인하세요)');
       }
       setIsLoading(false);
     }
