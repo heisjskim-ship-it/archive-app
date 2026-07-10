@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 interface IconProps { size?: number; className?: string; strokeWidth?: number; }
 
 export interface UserData {
-  id: string; role: 'student' | 'teacher' | 'pending_teacher';
+  id: string; role: 'student' | 'teacher' | 'pending_teacher' | 'pending_student';
   name: string; username: string; joinDate?: string; loginCount?: number;
   status?: string; studentNumber?: string; hasSeenTutorial?: boolean;
 }
@@ -66,6 +66,7 @@ const Loader2: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="
 const Edit: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>;
 const Download: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
 const Award: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>;
+const Paperclip: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>;
 
 // ==============================================
 // 🔥 Firebase SDK 모듈 및 초기 설정
@@ -74,7 +75,8 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  setPersistence, browserLocalPersistence, browserSessionPersistence, User as FirebaseUser
+  setPersistence, browserLocalPersistence, browserSessionPersistence, User as FirebaseUser,
+  GoogleAuthProvider, signInWithPopup
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc, getDoc, CollectionReference, DocumentData
@@ -92,6 +94,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
 
 // @ts-ignore
 const isCanvas = typeof __app_id !== 'undefined';
@@ -158,7 +161,12 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false); 
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  const [authModal, setAuthModal] = useState<{ show: boolean; mode: 'student_login' | 'student_register' | 'teacher_login' | 'teacher_register' }>({ show: false, mode: 'student_login' }); 
+  // 💡 구글 최초 로그인 시 역할 선택 모달 상태 관리
+  const [authModal, setAuthModal] = useState<{ show: boolean; mode: 'student_login' | 'student_register' | 'teacher_login' | 'teacher_register' | 'role_selection' }>({ show: false, mode: 'student_login' }); 
+  const [pendingGoogleUser, setPendingGoogleUser] = useState<FirebaseUser | null>(null);
+  const [googleRoleSelect, setGoogleRoleSelect] = useState<'student' | 'teacher'>('student');
+  const [googleStudentNo, setGoogleStudentNo] = useState('');
+
   const [loginIdInput, setLoginIdInput] = useState<string>(''); const [loginPwInput, setLoginPwInput] = useState<string>('');
   const [signUpNo, setSignUpNo] = useState<string>(''); const [signUpName, setSignUpName] = useState<string>('');
   const [signUpId, setSignUpId] = useState<string>(''); const [signUpPw, setSignUpPw] = useState<string>('');
@@ -256,7 +264,8 @@ export default function App() {
           const userDoc = await getDoc(doc(getColRef('users'), user.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data() as UserData;
-            if (userData.role === 'pending_teacher') {
+            // 💡 승인 대기 중인 계정 강제 로그아웃
+            if (userData.role === 'pending_teacher' || userData.role === 'pending_student') {
               await signOut(auth);
               setCurrentUser(null);
               localStorage.removeItem('savedUser');
@@ -318,10 +327,18 @@ export default function App() {
       const preview = URL.createObjectURL(validImageFile);
       
       if (studentQuestionModal) {
-        setStudentNewQuestion(prev => ({ ...prev, images: prev.images.concat(validImageFile), imagePreviews: prev.imagePreviews.concat(preview) }));
+        setStudentNewQuestion(prev => {
+          const updatedImages = prev.images.concat(validImageFile);
+          const updatedPreviews = prev.imagePreviews.concat(preview);
+          return { ...prev, images: updatedImages, imagePreviews: updatedPreviews };
+        });
         alertMessage('📌 클립보드 질문 이미지 추가');
       } else if (editQuestionModal && editingQuestion) {
-        setEditingQuestion(prev => prev ? ({ ...prev, items: prev.items.concat({ url: preview, file: validImageFile }) }) : null);
+        setEditingQuestion(prev => {
+          if (!prev) return null;
+          const updatedItems = prev.items.concat({ url: preview, file: validImageFile });
+          return { ...prev, items: updatedItems };
+        });
         alertMessage('📌 수정용 클립보드 이미지 추가 완료');
       } else if (selectedQuestion) {
         if (currentUser?.role === 'student' && !viewingSubmission) { setStudentSolutionImage(validImageFile); setStudentSolutionPreview(preview); alertMessage('📌 클립보드 이미지 첨부'); } 
@@ -330,7 +347,11 @@ export default function App() {
         else if (currentUser?.role === 'teacher' && viewingSubmission) { setFeedbackInputImage(validImageFile); setFeedbackInputImagePreview(preview); alertMessage('📌 클립보드 첨삭 추가'); }
         else if (currentUser?.role === 'teacher' && !viewingSubmission && selectedQuestion.isStudentQuestion) { setFeedbackInputImage(validImageFile); setFeedbackInputImagePreview(preview); alertMessage('📌 질문 코칭 이미지 추가'); }
       } else if (currentUser?.role === 'teacher' && teacherSubTab === 'content') {
-        setNewQuestion(prev => ({ ...prev, images: prev.images.concat(validImageFile), imagePreviews: prev.imagePreviews.concat(preview) }));
+        setNewQuestion(prev => {
+          const updatedImages = prev.images.concat(validImageFile);
+          const updatedPreviews = prev.imagePreviews.concat(preview);
+          return { ...prev, images: updatedImages, imagePreviews: updatedPreviews };
+        });
         alertMessage('📌 클립보드 기출문제 추가');
       }
     };
@@ -389,6 +410,7 @@ export default function App() {
 
   const generateEmail = (username: string) => `${username}@archive.edu`;
 
+  // 💡 이메일 회원가입: 학생도 무조건 승인 대기 상태로 변경
   const handleStudentSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signUpNo.trim() || !signUpName.trim() || !signUpId.trim() || !signUpPw.trim()) return alertMessage('정보를 모두 입력해 주세요.');
@@ -396,13 +418,16 @@ export default function App() {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, generateEmail(signUpId.trim()), signUpPw.trim());
-      const newStudentData: UserData = { id: userCredential.user.uid, role: 'student', studentNumber: signUpNo.trim(), name: signUpName.trim(), username: signUpId.trim(), joinDate: new Date().toISOString().split('T')[0], loginCount: 1, status: '활동중', hasSeenTutorial: false };
+      const newStudentData: UserData = { 
+        id: userCredential.user.uid, role: 'pending_student', studentNumber: signUpNo.trim(), 
+        name: signUpName.trim(), username: signUpId.trim(), joinDate: new Date().toISOString().split('T')[0], 
+        loginCount: 0, status: '승인대기', hasSeenTutorial: false 
+      };
       await setDoc(doc(getColRef('users'), userCredential.user.uid), newStudentData);
-      setCurrentUser(newStudentData);
-      localStorage.setItem('savedUser', JSON.stringify(newStudentData));
+      await signOut(auth);
       setAuthModal({ show: false, mode: 'student_login' });
       setSignUpNo(''); setSignUpName(''); setSignUpId(''); setSignUpPw('');
-      setTutorial({ show: true, role: 'student', step: 0 });
+      alertMessage('가입 신청이 완료되었습니다! 선생님의 승인 후 로그인하실 수 있습니다.');
     } catch (err: any) { alertMessage(err.code === 'auth/email-already-in-use' ? '이미 사용 중인 아이디입니다.' : '가입 실패: ' + err.message); }
     finally { setIsLoading(false); }
   };
@@ -438,9 +463,11 @@ export default function App() {
       const userDoc = await getDoc(doc(getColRef('users'), cred.user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data() as UserData;
-        if (userData.role === 'pending_teacher') { await signOut(auth); throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 계정입니다.'); }
+        if (userData.role === 'pending_teacher') { await signOut(auth); throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 교사 계정입니다.'); }
+        if (userData.role === 'pending_student') { await signOut(auth); throw new Error('아직 선생님의 가입 승인을 받지 못한 학생 계정입니다.'); }
         if (authModal.mode === 'teacher_login' && userData.role !== 'teacher') { await signOut(auth); throw new Error('교사 권한이 없는 계정입니다.'); }
         if (authModal.mode === 'student_login' && userData.role !== 'student') { await signOut(auth); throw new Error('학생 권한이 없는 계정입니다.'); }
+        
         await updateDoc(doc(getColRef('users'), cred.user.uid), { loginCount: (userData.loginCount || 0) + 1 });
         const loggedUser = { id: cred.user.uid, ...userData, loginCount: (userData.loginCount || 0) + 1 };
         setCurrentUser(loggedUser);
@@ -451,6 +478,87 @@ export default function App() {
       } else throw new Error('회원 정보가 없습니다.');
     } catch (err: any) { alertMessage(err.message || '로그인 실패'); }
     finally { setIsLoading(false); setLoginIdInput(''); setLoginPwInput(''); }
+  };
+
+  // 💡 구글 소셜 로그인 연동 핸들러: 신규 유저일 경우 역할 선택 화면으로 이동
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const userDocRef = doc(getColRef('users'), user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as UserData;
+        if (userData.role === 'pending_teacher') {
+          await signOut(auth); localStorage.removeItem('savedUser');
+          throw new Error('아직 최고 관리자의 임용 승인을 받지 못한 교사 계정입니다.');
+        }
+        if (userData.role === 'pending_student') {
+          await signOut(auth); localStorage.removeItem('savedUser');
+          throw new Error('아직 선생님의 가입 승인을 받지 못한 학생 계정입니다.');
+        }
+        const loggedUser = { id: user.uid, ...userData };
+        setCurrentUser(loggedUser);
+        localStorage.setItem('savedUser', JSON.stringify(loggedUser));
+        alertMessage(`반가워요, ${userData.name} ${userData.role === 'teacher' ? '선생님!' : '학생!'}`);
+        setAuthModal({ show: false, mode: 'student_login' });
+      } else {
+        // DB에 없는 신규 유저인 경우 -> 역할 선택 모달 띄우기
+        setPendingGoogleUser(user);
+        setAuthModal({ show: true, mode: 'role_selection' });
+      }
+    } catch (error: any) {
+      console.error(error);
+      alertMessage(error.message || '구글 로그인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 💡 구글 신규 유저의 역할(학생/교사) 선택 제출 핸들러
+  const handleRoleSelectionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingGoogleUser) return;
+    if (googleRoleSelect === 'student' && !googleStudentNo.trim()) return alertMessage('학번을 입력해주세요.');
+    setIsLoading(true);
+    try {
+      const userDocRef = doc(getColRef('users'), pendingGoogleUser.uid);
+      if (googleRoleSelect === 'student') {
+        const newStudentData: UserData = {
+          id: pendingGoogleUser.uid,
+          role: 'pending_student',
+          studentNumber: googleStudentNo.trim(),
+          name: pendingGoogleUser.displayName || '구글 학생',
+          username: pendingGoogleUser.email?.split('@')[0] || pendingGoogleUser.uid,
+          joinDate: new Date().toISOString().split('T')[0],
+          loginCount: 0,
+          status: '승인대기',
+          hasSeenTutorial: false
+        };
+        await setDoc(userDocRef, newStudentData);
+        alertMessage(`✨ [${newStudentData.name}] 학생 가입 신청 완료! 선생님 승인 후 접속 가능합니다.`);
+      } else {
+        const newTeacherData: Omit<UserData, 'id'> = {
+          role: 'pending_teacher',
+          name: pendingGoogleUser.displayName || '구글 교사',
+          username: pendingGoogleUser.email?.split('@')[0] || pendingGoogleUser.uid,
+          joinDate: new Date().toISOString().split('T')[0],
+          loginCount: 0,
+          status: '승인대기'
+        };
+        await setDoc(userDocRef, newTeacherData);
+        alertMessage(`✨ [${newTeacherData.name}] 교사 가입 신청 완료! 관리자 승인 후 접속 가능합니다.`);
+      }
+      await signOut(auth);
+      setPendingGoogleUser(null);
+      setAuthModal({ show: false, mode: 'student_login' });
+    } catch(err: any) {
+      alertMessage('등록 오류: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -506,6 +614,13 @@ export default function App() {
         catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
       }
     });
+  };
+
+  // 💡 선생님의 학생 승인 처리
+  const handleApproveStudent = async (student: UserData) => {
+    setIsLoading(true);
+    try { await updateDoc(doc(getColRef('users'), student.id), { role: 'student', status: '활동중' }); alertMessage('[' + student.name + '] 학생 가입 승인 완료!'); } 
+    catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
   };
 
   const handleUpdateQuestionSubmit = async (e: React.FormEvent) => {
@@ -708,6 +823,7 @@ export default function App() {
   const regularQuestions = filteredStudentQuestions.filter(q => !q.isPinned);
   const filteredTeacherQuestions = questions.filter(q => { const c = teacherQuestionSearch.trim().toLowerCase(); return !c || q.title.toLowerCase().includes(c) || q.tags.some(t => t.toLowerCase().includes(c)); });
   const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
+  const pendingStudents = allUsers.filter(u => u.role === 'pending_student');
   const approvedTeachers = allUsers.filter(u => u.role === 'teacher' && u.id !== 'teacher_admin');
 
   function renderQuestionCard(q: Question, isHighlight: boolean) {
@@ -848,7 +964,7 @@ export default function App() {
                         {newQuestion.imagePreviews.length > 0 ? (
                           <div className="grid grid-cols-2 gap-2 mb-2">
                             {newQuestion.imagePreviews.map((preview, idx) => (
-                              <div key={idx} className="relative group border border-slate-200 shadow-sm rounded-lg overflow-hidden bg-white"><img src={preview} className="h-20 w-full object-cover cursor-zoom-in" onClick={()=>openLightbox(preview, '미리보기')}/><button type="button" onClick={()=>removeQuestionPreview(idx)} className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"><X size={12}/></button></div>
+                              <div key={idx} className="relative group border border-slate-200 shadow-sm rounded-lg overflow-hidden bg-white"><img src={preview} className="h-20 w-full object-cover rounded cursor-zoom-in" onClick={()=>openLightbox(preview, '미리보기')}/><button type="button" onClick={()=>removeQuestionPreview(idx)} className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white p-0.5 rounded-full"><X size={12}/></button></div>
                             ))}
                             <label className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-300 rounded-lg hover:bg-emerald-50 cursor-pointer min-h-[5rem] transition-colors"><Plus size={20} className="text-emerald-500" /><span className="text-[10px] font-bold text-emerald-600">추가</span><input type="file" multiple accept="image/*" onChange={handleQuestionImageChange} className="hidden" /></label>
                           </div>
@@ -916,7 +1032,7 @@ export default function App() {
                             const matchedQuestion = questions.find(q => q.id === item.questionId);
                             return (
                               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-3 flex items-center gap-1.5">
+                                <td className="p-3 flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
                                   <span className={`px-2 py-0.5 rounded-md font-black text-[9px] shadow-sm ${item.type === 'ASK' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>{item.type === 'ASK' ? 'QUESTION' : 'SOLUTION'}</span>
                                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-sm ${item.status === '답변 완료' || item.status === '피드백 완료' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{item.status}</span>
                                 </td>
@@ -936,7 +1052,33 @@ export default function App() {
               </div>
             ) : (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">학생 일괄 가입 등록</h3><button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-md transition-colors">일괄 등록 완료</button></div>
+                
+                {/* 💡 선생님 화면: 학생 가입 승인 대기방 추가 */}
+                {pendingStudents.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 학생 승인 대기방</h3>
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50 mb-6">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-indigo-50 border-b border-slate-200 text-indigo-900">
+                          <tr><th className="p-3 font-bold">학번</th><th className="p-3 font-bold">이름</th><th className="p-3 font-bold">아이디</th><th className="p-3 text-right font-bold">승인 제어</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                          {pendingStudents.map(ps => (
+                            <tr key={ps.id} className="hover:bg-indigo-50/30 transition-colors">
+                              <td className="p-3 font-mono">{ps.studentNumber}</td><td className="p-3 font-bold">{ps.name}</td><td className="p-3 font-mono">{ps.username}</td>
+                              <td className="p-3 text-right space-x-2">
+                                <button onClick={() => handleApproveStudent(ps)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">가입 승인</button>
+                                <button onClick={() => handleDeleteStudent(ps)} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">거절/삭제</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">학생 일괄 가입 직접 등록</h3><button onClick={handleSaveDraftStudents} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-md transition-colors">일괄 등록 완료</button></div>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-slate-100 text-slate-600 border-b"><tr><th className="p-3 text-center font-bold w-12 border-r">No</th><th className="p-3 font-bold border-r">학번</th><th className="p-3 font-bold border-r">실명</th><th className="p-3 font-bold border-r">아이디 (ID)</th><th className="p-3 text-center font-bold w-16">삭제</th></tr></thead>
@@ -955,7 +1097,7 @@ export default function App() {
                   <button type="button" onClick={handleAddDraftRow} className="w-full p-3 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-t border-slate-200 flex justify-center items-center gap-1 transition-colors"><Plus size={16} /> 줄 추가하기 (행 추가)</button>
                 </div>
                 
-                <div className="flex justify-between items-center mt-8"><h3 className="font-bold text-lg text-slate-900">가입 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
+                <div className="flex justify-between items-center mt-8"><h3 className="font-bold text-lg text-slate-900">가입 승인된 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">아이디</th><th className="p-3.5 text-center font-bold text-slate-600">로그인 횟수</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
@@ -1014,7 +1156,6 @@ export default function App() {
             </div>
 
             <div className="flex flex-col lg:flex-row gap-6 items-start">
-              {/* 왼쪽 메인 영역: 검색창 및 문제 리스트 */}
               <div className="flex-1 w-full space-y-6">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4">
                   <div className="relative w-full flex-1">
@@ -1056,7 +1197,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 오른쪽 사이드바 영역: 이달의 열공 랭킹 컴팩트 리스트 */}
               {activeTab === 'all' && rankingData.length > 0 && (
                 <div className="w-full lg:w-72 xl:w-80 shrink-0">
                   <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 sticky top-20">
@@ -1098,32 +1238,114 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
             <div className="flex justify-between items-center mb-5 border-b pb-3">
-              <h3 className="font-extrabold text-lg text-slate-900">{authModal.mode === 'student_register' ? '🚀 학생 가입' : authModal.mode === 'teacher_register' ? '🧑‍🏫 교사 승인 신청' : authModal.mode === 'teacher_login' ? '🧑‍🏫 교사 로그인' : '✏️ 학생 로그인'}</h3>
+              <h3 className="font-extrabold text-lg text-slate-900">
+                {authModal.mode === 'role_selection' ? '구글 연동 완료 🎉' : authModal.mode === 'student_register' ? '🚀 학생 가입' : authModal.mode === 'teacher_register' ? '🧑‍🏫 교사 승인 신청' : authModal.mode === 'teacher_login' ? '🧑‍🏫 교사 로그인' : '✏️ 학생 로그인'}
+              </h3>
               <button onClick={() => setAuthModal({ show: false, mode: 'student_login' })} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
             </div>
-            {authModal.mode === 'student_register' ? (
+            
+            {authModal.mode === 'role_selection' ? (
+              <form onSubmit={handleRoleSelectionSubmit} className="space-y-4">
+                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4 text-center">
+                  <p className="text-sm font-bold text-indigo-900">아카이브에서 사용할 역할을 선택해 주세요.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setGoogleRoleSelect('student')} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${googleRoleSelect === 'student' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>👨‍🎓 학생</button>
+                  <button type="button" onClick={() => setGoogleRoleSelect('teacher')} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${googleRoleSelect === 'teacher' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>🧑‍🏫 선생님</button>
+                </div>
+                {googleRoleSelect === 'student' && (
+                  <div className="animate-fade-in mt-3">
+                    <input type="text" value={googleStudentNo} onChange={e=>setGoogleStudentNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번을 입력해주세요 (예: 30101)" required/>
+                  </div>
+                )}
+                <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl mt-4 transition-colors shadow-md ${googleRoleSelect === 'teacher' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>가입 승인 신청하기</button>
+              </form>
+            ) : authModal.mode === 'student_register' ? (
               <form onSubmit={handleStudentSignUp} className="space-y-3">
                 <input type="text" value={signUpNo} onChange={e=>setSignUpNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번 (예: 30101)" required/>
                 <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="실명 입력" required/>
                 <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="사용할 아이디 (ID)" required/>
                 <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호 (6자 이상)" required/>
-                <button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl mt-4 transition-colors shadow-md">가입 완료 및 접속</button>
-                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_login'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">이미 계정이 있습니다</button>
+                
+                {/* 💡 구글 원클릭 회원가입 버튼 */}
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold">또는</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={handleGoogleLogin}
+                  className="w-full py-3 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-sm active:scale-[0.98]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.18 1-.78 1.85-1.63 2.42v2.81h2.64c1.55-1.42 2.63-3.53 2.63-6.24z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-2.64-2.81c-.74.5-1.68.8-2.64.8-2.03 0-3.75-1.37-4.36-3.21H2.1v2.91C3.92 21.03 7.71 23 12 23z"/>
+                    <path fill="#FBBC05" d="M7.64 15.12c-.15-.45-.24-.93-.24-1.43s.09-.98.24-1.43V9.35H2.1a11.93 11.93 0 000 10.65l5.54-2.88z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.71 1 3.92 2.97 2.1 6.44l5.54 2.88c.61-1.84 2.33-3.21 4.36-3.21z"/>
+                  </svg>
+                  구글 계정으로 가입하기
+                </button>
+
+                <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl mt-4">가입 완료 및 접속</button>
+                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_login'})} className="w-full text-xs text-indigo-600 font-bold mt-2">이미 계정이 있습니다</button>
               </form>
             ) : authModal.mode === 'teacher_register' ? (
               <form onSubmit={handleTeacherSignUp} className="space-y-3">
                 <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="선생님 성함" required/>
                 <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="교사용 아이디" required/>
                 <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="비밀번호 (6자 이상)" required/>
-                <button type="submit" className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4 transition-colors shadow-md">가입 권한 신청하기</button>
-                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_login'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">교사 로그인으로 돌아가기</button>
+                
+                {/* 💡 구글 원클릭 가입 신청 버튼 */}
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold">또는</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={handleGoogleLogin}
+                  className="w-full py-3 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-sm active:scale-[0.98]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.18 1-.78 1.85-1.63 2.42v2.81h2.64c1.55-1.42 2.63-3.53 2.63-6.24z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-2.64-2.81c-.74.5-1.68.8-2.64.8-2.03 0-3.75-1.37-4.36-3.21H2.1v2.91C3.92 21.03 7.71 23 12 23z"/>
+                    <path fill="#FBBC05" d="M7.64 15.12c-.15-.45-.24-.93-.24-1.43s.09-.98.24-1.43V9.35H2.1a11.93 11.93 0 000 10.65l5.54-2.88z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.71 1 3.92 2.97 2.1 6.44l5.54 2.88c.61-1.84 2.33-3.21 4.36-3.21z"/>
+                  </svg>
+                  구글 계정으로 가입 신청
+                </button>
+
+                <button type="submit" className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl mt-4">가입 권한 신청하기</button>
+                <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_login'})} className="w-full text-xs text-emerald-600 font-bold mt-2">교사 로그인으로 돌아가기</button>
               </form>
             ) : (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <input type="text" value={loginIdInput} onChange={e=>setLoginIdInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="아이디" required/>
                 <input type="password" value={loginPwInput} onChange={e=>setLoginPwInput(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호" required/>
-                <label className="flex items-center gap-2 cursor-pointer pt-1 w-fit"><input type="checkbox" checked={keepLoggedIn} onChange={e=>setKeepLoggedIn(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/><span className="text-xs font-bold text-slate-600">자동 로그인 (브라우저 종료 후에도 유지)</span></label>
-                <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl transition-colors shadow-md ${authModal.mode === 'teacher_login' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>로그인</button>
+                <label className="flex items-center gap-2 cursor-pointer pt-1 w-fit"><input type="checkbox" checked={keepLoggedIn} onChange={e=>setKeepLoggedIn(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/><span className="text-xs font-bold text-slate-600">자동 로그인 유지</span></label>
+                
+                {/* 💡 구글 원클릭 로그인 버튼 */}
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold">또는</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={handleGoogleLogin}
+                  className="w-full py-3 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl font-bold flex items-center justify-center gap-2.5 transition-all shadow-sm active:scale-[0.98]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.18 1-.78 1.85-1.63 2.42v2.81h2.64c1.55-1.42 2.63-3.53 2.63-6.24z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-2.64-2.81c-.74.5-1.68.8-2.64.8-2.03 0-3.75-1.37-4.36-3.21H2.1v2.91C3.92 21.03 7.71 23 12 23z"/>
+                    <path fill="#FBBC05" d="M7.64 15.12c-.15-.45-.24-.93-.24-1.43s.09-.98.24-1.43V9.35H2.1a11.93 11.93 0 000 10.65l5.54-2.88z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.71 1 3.92 2.97 2.1 6.44l5.54 2.88c.61-1.84 2.33-3.21 4.36-3.21z"/>
+                  </svg>
+                  구글 계정으로 시작하기
+                </button>
+
+                <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl ${authModal.mode === 'teacher_login' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>로그인</button>
                 {authModal.mode === 'student_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'student_register'})} className="w-full text-xs text-indigo-600 font-bold mt-2 hover:underline">학생 가입하기</button>}
                 {authModal.mode === 'teacher_login' && <button type="button" onClick={()=>setAuthModal({...authModal, mode:'teacher_register'})} className="w-full text-xs text-emerald-600 font-bold mt-2 hover:underline">교사 가입 신청하기</button>}
               </form>
@@ -1398,7 +1620,7 @@ export default function App() {
                                 {studentSolutionPreview ? (
                                   <div className="relative"><img src={studentSolutionPreview} className="max-h-24 mx-auto rounded-lg border shadow-sm"/><button onClick={(e)=>{e.stopPropagation(); setStudentSolutionImage(null); setStudentSolutionPreview('');}} className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full shadow-md transition-colors"><X size={12}/></button></div>
                                 ) : (
-                                  <label className="cursor-pointer block"><Upload className="mx-auto text-indigo-400 mb-2" size={24}/><span className="text-xs font-bold text-indigo-600 block">새로 푼 사진 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const f=e.target.files; if(f&&f[0]){setStudentSolutionImage(f[0]); setStudentSolutionPreview(URL.createObjectURL(f[0]));}}} className="hidden"/></label>
+                                  <label className="cursor-pointer block"><Upload className="mx-auto text-indigo-400 mb-2" size={24}/><span className="text-xs font-bold text-indigo-600 block">새로 푼 사진 첨부 (Ctrl+V)</span><input type="file" accept="image/*" onChange={e=>{const files=e.target.files; if(files&&files[0]){setStudentSolutionImage(files[0]); setStudentSolutionPreview(URL.createObjectURL(files[0]));}}} className="hidden"/></label>
                                 )}
                               </div>
                               <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-3 bg-indigo-600 disabled:bg-slate-300 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-colors text-xs">추가 회차 제출</button>
@@ -1418,7 +1640,7 @@ export default function App() {
                                         <div className="flex justify-between items-center mb-1.5"><span className="font-extrabold text-slate-800">{c.authorName}</span><span className="text-[9px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded border">{formatDateTime(c.createdAt)}</span></div>
                                         {c.imageUrl && (
                                           <div className="my-2 max-w-full rounded-lg overflow-hidden border border-slate-200 cursor-zoom-in relative group shadow-sm" onClick={() => openLightbox(c.imageUrl!, '첨부 사진')}>
-                                            <img src={c.imageUrl} className="max-h-36 object-contain bg-slate-50 w-full" />
+                                            <img src={c.imageUrl} alt="첨부 이미지" className="max-h-36 object-contain bg-slate-50 w-full" />
                                             <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold">확대 보기</div>
                                           </div>
                                         )}
@@ -1434,7 +1656,7 @@ export default function App() {
                                 {peerCommentImagePreview && (
                                   <div className="relative w-fit border rounded-lg p-1 bg-slate-50 shadow-sm animate-in slide-in-from-bottom-2">
                                     <img src={peerCommentImagePreview} className="h-16 rounded object-cover"/>
-                                    <button type="button" onClick={()=>{setPeerCommentImage(null); setPeerCommentImagePreview('');}} className="absolute -top-1.5 -right-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 shadow-md"><X size={12}/></button>
+                                    <button type="button" onClick={()=>{setPeerCommentImage(null); setPeerCommentImagePreview('');}} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-md"><X size={12}/></button>
                                   </div>
                                 )}
                                 <div className="flex gap-2.5 items-center">
@@ -1521,6 +1743,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 7. 컨펌 모달 */}
       {confirmModal.show && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[250]">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center border border-slate-200">
