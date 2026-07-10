@@ -242,7 +242,7 @@ export default function App() {
     } else setAppInstallModal(true);
   };
 
-  // 💡 구글 소셜 로그인 연동 핸들러: 신규 유저일 경우 역할 선택 화면으로 이동
+  // 💡 구글 소셜 로그인 연동 핸들러
   const handleGoogleResult = async (result: any) => {
     const user = result.user;
     const userDocRef = doc(getColRef('users'), user.uid);
@@ -267,20 +267,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    // 💡 400 Bad Request 해결: Vercel(isCanvas=false) 환경에서는 익명 로그인을 시도하지 않도록 구조 변경
     const initAuth = async () => {
       try {
-        // @ts-ignore
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
         else await signInAnonymously(auth);
       } catch (err) {
         try { await signInAnonymously(auth); } catch (e) {}
       }
     };
-    initAuth();
 
-    // 💡 COOP/COEP 에러 및 모바일 호환성 해결: Vercel 배포 시 구글 Redirect 결과 처리
     const checkRedirect = async () => {
-      if (isCanvas) return;
       try {
         const result = await getRedirectResult(auth);
         if (result && result.user) {
@@ -289,11 +286,17 @@ export default function App() {
       } catch (error: any) {
         console.error("Redirect Error:", error);
         if (error.code === 'auth/unauthorized-domain') {
-          alertMessage('Vercel 도메인이 Firebase에 등록되지 않았습니다.');
+          alertMessage('Vercel 도메인이 Firebase에 등록되지 않았습니다. Firebase 콘솔에서 도메인을 추가해주세요.');
         }
       }
     };
-    checkRedirect();
+
+    // 환경에 따라 초기화 로직 분리
+    if (isCanvas) {
+      initAuth();
+    } else {
+      checkRedirect();
+    }
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
@@ -310,6 +313,12 @@ export default function App() {
               const u = { id: user.uid, ...userData };
               setCurrentUser(u);
               localStorage.setItem('savedUser', JSON.stringify(u));
+            }
+          } else {
+            // 구글 등 소셜 로그인 최초 접근 시 문서가 없으면 역할 선택창 띄우기
+            if (user.providerData.some(p => p.providerId === 'google.com')) {
+              setPendingGoogleUser(user);
+              setAuthModal({ show: true, mode: 'role_selection' });
             }
           }
         } catch (err) {}
@@ -334,7 +343,6 @@ export default function App() {
     setIsLoading(true);
 
     // 1. 누구나 읽을 수 있는 데이터 (Questions, Users)
-    // 💡 방어벽 해제: 로그인 여부(firebaseUser)와 관계없이 기출문제와 랭킹 목록은 무조건 불러옵니다.
     const unsubQ = onSnapshot(getColRef('questions'), 
       (snap) => {
         setQuestions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Question[]);
@@ -359,7 +367,7 @@ export default function App() {
 
     // 2. 로그인된 사용자만 읽을 수 있는 보안 데이터 (Submissions)
     let unsubS = () => {};
-    if (firebaseUser) {
+    if (firebaseUser && !firebaseUser.isAnonymous) {
       unsubS = onSnapshot(getColRef('submissions'), 
         (snap) => setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Submission[]),
         (err: any) => {
@@ -481,7 +489,7 @@ export default function App() {
 
   const generateEmail = (username: string) => `${username}@archive.edu`;
 
-  // 💡 400 에러 방지: 아이디 영문/숫자 검증
+  // 💡 아이디 영문/숫자 검증
   const validateSignUpId = (id: string) => {
     const idRegex = /^[a-zA-Z0-9]+$/;
     return idRegex.test(id.trim());
@@ -532,11 +540,29 @@ export default function App() {
     setIsLoading(true);
     try {
       await setPersistence(auth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+      
+      // 💡 관리자 승인 권한 문제 해결: admin 계정을 실제 Firebase Auth 계정으로 강제 승격 및 연결
       if (authModal.mode === 'teacher_login' && loginIdInput.trim() === 'admin' && loginPwInput.trim() === 'tlagkr1!') {
-        localStorage.setItem('adminSession', 'true');
-        setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
-        setAuthModal({ show: false, mode: 'student_login' }); alertMessage('최고 관리자 모드로 로그인했습니다.'); return;
+        try {
+          let cred;
+          try {
+            cred = await signInWithEmailAndPassword(auth, 'admin@archive.edu', 'tlagkr1!');
+          } catch (e) {
+            cred = await createUserWithEmailAndPassword(auth, 'admin@archive.edu', 'tlagkr1!');
+            await setDoc(doc(getColRef('users'), cred.user.uid), {
+              role: 'teacher', name: '최고 관리자', username: 'admin', status: '활동중', joinDate: new Date().toISOString().split('T')[0], loginCount: 0
+            });
+          }
+          localStorage.setItem('adminSession', 'true');
+          setAuthModal({ show: false, mode: 'student_login' }); 
+          alertMessage('최고 관리자 모드로 로그인했습니다.');
+          return;
+        } catch (err: any) {
+          alertMessage('관리자 계정 구성 실패: ' + err.message);
+          return;
+        }
       }
+
       const cred = await signInWithEmailAndPassword(auth, generateEmail(loginIdInput.trim()), loginPwInput.trim());
       const userDoc = await getDoc(doc(getColRef('users'), cred.user.uid));
       if (userDoc.exists()) {
@@ -633,7 +659,10 @@ export default function App() {
       localStorage.removeItem('adminSession');
       setCurrentUser(null); setStudentQuestionSearch(''); setSubmissionSearch(''); setTeacherQuestionSearch(''); setTeacherSubTab('content'); setViewingSubmission(null); setSelectedQuestion(null);
       alertMessage('안전하게 로그아웃되었습니다.');
-      await signInAnonymously(auth);
+      // 💡 Vercel 환경에서 불필요한 익명 로그인으로 인한 400 에러 방지
+      if (isCanvas) {
+        await signInAnonymously(auth);
+      }
     } catch (err) {} finally { setIsLoading(false); }
   };
 
@@ -1331,7 +1360,7 @@ export default function App() {
               <form onSubmit={handleStudentSignUp} className="space-y-3">
                 <input type="text" value={signUpNo} onChange={e=>setSignUpNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번 (예: 30101)" required/>
                 <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="이름" required/>
-                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="사용할 아이디 (ID)" required/>
+                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="사용할 아이디 (영문/숫자만)" required/>
                 <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="비밀번호 (6자 이상)" required/>
                 
                 {/* 💡 구글 원클릭 회원가입 버튼 */}
@@ -1360,7 +1389,7 @@ export default function App() {
             ) : authModal.mode === 'teacher_register' ? (
               <form onSubmit={handleTeacherSignUp} className="space-y-3">
                 <input type="text" value={signUpName} onChange={e=>setSignUpName(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="선생님 성함" required/>
-                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="교사용 아이디" required/>
+                <input type="text" value={signUpId} onChange={e=>setSignUpId(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="교사용 아이디 (영문/숫자만)" required/>
                 <input type="password" value={signUpPw} onChange={e=>setSignUpPw(e.target.value)} minLength={6} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="비밀번호 (6자 이상)" required/>
                 
                 {/* 💡 구글 원클릭 가입 신청 버튼 */}
@@ -1753,7 +1782,7 @@ export default function App() {
                     {selectedQuestion.isChallenge && (
                       <label className="flex items-start gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100 cursor-pointer shadow-sm hover:bg-indigo-100/50 transition-colors"><input type="checkbox" checked={isSharedChecked} onChange={e=>setIsSharedChecked(e.target.checked)} className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"/><div className="flex flex-col"><span className="text-sm font-extrabold text-indigo-900">{selectedQuestion.isStudentQuestion ? '내 답변을 다른 친구들에게 공유합니다.' : '내 풀이를 챌린지 갤러리에 공유합니다.'}</span><span className="text-[10px] font-semibold text-indigo-600 mt-1">체크 시, 제출 후 다른 참가자들의 풀이를 열람하고 피드백할 수 있습니다.</span></div></label>
                     )}
-                    <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-4 bg-indigo-600 disabled:bg-slate-300 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]">{selectedQuestion.isStudentQuestion ? '답변 최종 제출하기' : '풀이 최종 제출하기'}</button>
+                    <button onClick={handleSubmitSolution} disabled={!studentSolutionPreview} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl font-black text-sm shadow-xl shadow-indigo-200 transition-all active:scale-[0.98]">{selectedQuestion.isStudentQuestion ? '답변 최종 제출하기' : '풀이 최종 제출하기'}</button>
                   </div>
                 )}
               </div>
