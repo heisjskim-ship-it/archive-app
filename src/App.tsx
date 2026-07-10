@@ -244,14 +244,12 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      if (isCanvas) {
-        try {
-          // @ts-ignore
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-          else await signInAnonymously(auth);
-        } catch (err) {
-          try { await signInAnonymously(auth); } catch (e) {}
-        }
+      try {
+        // @ts-ignore
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+        else await signInAnonymously(auth);
+      } catch (err) {
+        try { await signInAnonymously(auth); } catch (e) {}
       }
     };
     initAuth();
@@ -291,8 +289,7 @@ export default function App() {
 
   // 💡 보안 권한 에러 해결: FirebaseUser 로그인 상태에 따라 onSnapshot 동적 구독
   useEffect(() => {
-    // Vercel(실서비스) 환경이면서 로그인하지 않은 상태라면, 보안 규칙에 막히는 구독을 방지
-    if (!isCanvas && !firebaseUser) {
+    if (!firebaseUser) {
       setQuestions([]);
       setSubmissions([]);
       setAllUsers([]);
@@ -300,7 +297,6 @@ export default function App() {
       return; 
     }
 
-    // Canvas 환경이거나 로그인된 상태일 경우 데이터 로딩 시작
     setIsLoading(true);
 
     // 1. 누구나 읽을 수 있는 공개 데이터 (Questions, Users)
@@ -323,15 +319,10 @@ export default function App() {
     );
 
     // 2. 로그인된 사용자만 읽을 수 있는 보안 데이터 (Submissions)
-    let unsubS = () => {};
-    if (firebaseUser || isCanvas) {
-      unsubS = onSnapshot(getColRef('submissions'), 
-        (snap) => setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Submission[]),
-        (err) => console.error("Submissions 권한 오류:", err)
-      );
-    } else {
-      setSubmissions([]); // 로그아웃 상태일 때 초기화
-    }
+    const unsubS = onSnapshot(getColRef('submissions'), 
+      (snap) => setSubmissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Submission[]),
+      (err) => console.error("Submissions 권한 오류:", err)
+    );
 
     return () => { unsubQ(); unsubS(); unsubU(); };
   }, [firebaseUser]);
@@ -472,7 +463,7 @@ export default function App() {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, generateEmail(signUpId.trim()), signUpPw.trim());
-      const newTeacherData: Omit<UserData, 'id'> = { role: 'pending_teacher', name: signUpName.trim(), username: signUpId.trim(), joinDate: new Date().toISOString().split('T')[0], loginCount: 0, status: '승인대기' };
+      const newTeacherData: Omit<UserData, 'id'> = { role: 'pending_teacher', name: signUpName.trim(), username: signUpId.trim(), joinDate: new DatetoISOString().split('T')[0], loginCount: 0, status: '승인대기' };
       await setDoc(doc(getColRef('users'), userCredential.user.uid), newTeacherData);
       await signOut(auth); setAuthModal({ show: false, mode: 'student_login' });
       alertMessage('✨ [' + signUpName + '] 선생님의 권한 신청이 정상 등록되었습니다! 최고 관리자(admin) 승인 후 로그인이 가능합니다.');
@@ -606,6 +597,7 @@ export default function App() {
       localStorage.removeItem('adminSession');
       setCurrentUser(null); setStudentQuestionSearch(''); setSubmissionSearch(''); setTeacherQuestionSearch(''); setTeacherSubTab('content'); setViewingSubmission(null); setSelectedQuestion(null);
       alertMessage('안전하게 로그아웃되었습니다.');
+      await signInAnonymously(auth);
     } catch (err) {} finally { setIsLoading(false); }
   };
 
