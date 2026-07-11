@@ -9,6 +9,7 @@ export interface UserData {
   id: string; role: 'student' | 'teacher' | 'pending_teacher' | 'pending_student';
   name: string; username: string; joinDate?: string; loginCount?: number;
   status?: string; studentNumber?: string; hasSeenTutorial?: boolean;
+  admissionYear?: string;
 }
 
 export interface Attempt { imageUrl: string; submittedAt: string; feedbackText?: string; feedbackImageUrl?: string; feedbackAt?: string; }
@@ -28,6 +29,7 @@ export interface Question {
   feedbackImageUrl?: string; feedbackText?: string; feedbackAt?: string; status?: string;
 }
 
+interface DraftStudent { rowId: number; no: string; name: string; username: string; }
 interface TutorialStep { title: string; desc: string; icon: React.ReactNode; }
 
 // ==============================================
@@ -48,6 +50,7 @@ const Check: React.FC<IconProps> = ({ size=24, className="", strokeWidth=2 }) =>
 const AlertCircle: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
 const Search: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
 const Users: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+const Lock: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 const MessageSquare: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 const Sparkles: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>;
 const Pin: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
@@ -78,7 +81,7 @@ const GoogleIcon = () => (
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, onAuthStateChanged, signOut,
-  GoogleAuthProvider, signInWithPopup, signInWithCustomToken
+  GoogleAuthProvider, signInWithPopup, signInWithCustomToken, getRedirectResult, signInWithRedirect
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, updateDoc, getDoc, CollectionReference, DocumentData
@@ -165,9 +168,12 @@ export default function App() {
   const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
   const [pendingGoogleUser, setPendingGoogleUser] = useState<FirebaseUser | null>(null);
   const [googleRoleSelect, setGoogleRoleSelect] = useState<'student' | 'teacher'>('student');
+  const [googleAdmissionYear, setGoogleAdmissionYear] = useState('');
   const [googleStudentNo, setGoogleStudentNo] = useState('');
   const [adminSecret, setAdminSecret] = useState(''); // 💡 관리자 자동 승급용 시크릿 코드
   
+  const [rankingConfig, setRankingConfig] = useState({ startDate: '', endDate: '' });
+
   const [tutorial, setTutorial] = useState<{ show: boolean; role: string; step: number }>({ show: false, role: '', step: 0 });
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -285,6 +291,19 @@ export default function App() {
 
     setIsLoading(true);
 
+    let unsubConfig = () => {};
+    if (firebaseUser) {
+      unsubConfig = onSnapshot(doc(getColRef('settings'), 'rankingConfig'), (docSnap) => {
+        if (docSnap.exists()) {
+          setRankingConfig(docSnap.data() as { startDate: string, endDate: string });
+        } else {
+          setRankingConfig({ startDate: '', endDate: '' });
+        }
+      }, (err: any) => {
+        if (err.code !== 'permission-denied') console.error("Settings 권한 오류:", err);
+      });
+    }
+
     // 1. 누구나 읽을 수 있는 데이터 (Questions, Users)
     const unsubQ = onSnapshot(getColRef('questions'), 
       (snap) => {
@@ -321,7 +340,7 @@ export default function App() {
       setSubmissions([]); // 로그아웃 상태일 때 초기화
     }
 
-    return () => { unsubQ(); unsubS(); unsubU(); };
+    return () => { unsubQ(); unsubS(); unsubU(); unsubConfig(); };
   }, [firebaseUser, isAuthLoading]);
 
   useEffect(() => {
@@ -474,7 +493,9 @@ export default function App() {
   const handleRoleSelectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pendingGoogleUser) return;
-    if (googleRoleSelect === 'student' && !googleStudentNo.trim()) return alertMessage('학번을 입력해주세요.');
+    if (googleRoleSelect === 'student' && (!googleAdmissionYear.trim() || !googleStudentNo.trim())) return alertMessage('입학 연도와 학번을 모두 입력해주세요.');
+    if (googleRoleSelect === 'teacher' && adminSecret !== 'tlagkr1!') return alertMessage('관리자 인증 코드가 올바르지 않습니다.');
+    
     setIsLoading(true);
     try {
       const userDocRef = doc(getColRef('users'), pendingGoogleUser.uid);
@@ -482,6 +503,7 @@ export default function App() {
         const newStudentData: UserData = {
           id: pendingGoogleUser.uid,
           role: 'pending_student',
+          admissionYear: googleAdmissionYear.trim(),
           studentNumber: googleStudentNo.trim(),
           name: pendingGoogleUser.displayName || '학생',
           username: pendingGoogleUser.email?.split('@')[0] || pendingGoogleUser.uid,
@@ -494,35 +516,40 @@ export default function App() {
         alertMessage(`✨ [${newStudentData.name}] 학생 가입 신청 완료! 선생님 승인 후 접속 가능합니다.`);
         await signOut(auth);
       } else {
-        // 💡 관리자 자동 승급 시크릿 코드 검증
-        const isCreator = adminSecret === 'tlagkr1!';
         const newTeacherData: UserData = {
           id: pendingGoogleUser.uid,
-          role: isCreator ? 'teacher' : 'pending_teacher',
+          role: 'teacher',
           name: pendingGoogleUser.displayName || '선생님',
           username: pendingGoogleUser.email?.split('@')[0] || pendingGoogleUser.uid,
           joinDate: new Date().toISOString().split('T')[0],
-          loginCount: isCreator ? 1 : 0,
-          status: isCreator ? '활동중' : '승인대기'
+          loginCount: 1,
+          status: '활동중'
         };
         await setDoc(userDocRef, newTeacherData);
-        
-        if (isCreator) {
-          alertMessage(`✨ 관리자 인증 완료! 교사로 즉시 가입되었습니다.`);
-          setCurrentUser(newTeacherData);
-          localStorage.setItem('savedUser', JSON.stringify(newTeacherData));
-        } else {
-          alertMessage(`✨ 교사 가입 신청 완료! 관리자 승인 후 접속 가능합니다.`);
-          await signOut(auth);
-        }
+        alertMessage(`✨ 관리자 인증 완료! 교사로 즉시 가입 및 접속되었습니다.`);
+        setCurrentUser(newTeacherData);
+        localStorage.setItem('savedUser', JSON.stringify(newTeacherData));
       }
       setPendingGoogleUser(null);
       setShowRoleModal(false);
       setAdminSecret('');
+      setGoogleAdmissionYear('');
+      setGoogleStudentNo('');
     } catch(err: any) {
       alertMessage('등록 오류: ' + err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAdminLogin = () => {
+    const pw = window.prompt('최고 관리자 비밀번호를 입력하세요.');
+    if (pw === 'tlagkr1!') {
+      localStorage.setItem('adminSession', 'true');
+      setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
+      alertMessage('최고 관리자 모드로 로그인했습니다.');
+    } else if (pw !== null) {
+      alertMessage('비밀번호가 일치하지 않습니다.');
     }
   };
 
@@ -560,16 +587,26 @@ export default function App() {
     });
   };
 
-  const handleApproveTeacher = async (teacher: UserData) => {
-    setIsLoading(true);
-    try { await updateDoc(doc(getColRef('users'), teacher.id), { role: 'teacher', status: '활동중' }); alertMessage('[' + teacher.name + '] 임용 승인 완료!'); } 
-    catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
-  };
-
   const handleApproveStudent = async (student: UserData) => {
     setIsLoading(true);
     try { await updateDoc(doc(getColRef('users'), student.id), { role: 'student', status: '활동중' }); alertMessage('[' + student.name + '] 학생 가입 승인 완료!'); } 
     catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleUpdateUserRole = async (userId: string, newRole: string) => {
+    setIsLoading(true);
+    try {
+      await updateDoc(doc(getColRef('users'), userId), { role: newRole, status: newRole === 'pending_student' ? '승인대기' : '활동중' });
+      alertMessage('회원 권한이 변경되었습니다.');
+    } catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
+  };
+
+  const handleSaveRankingConfig = async () => {
+    setIsLoading(true);
+    try {
+      await setDoc(doc(getColRef('settings'), 'rankingConfig'), rankingConfig);
+      alertMessage('랭킹 집계 기간이 설정되었습니다.');
+    } catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
   };
 
   const handleUpdateQuestionSubmit = async (e: React.FormEvent) => {
@@ -728,11 +765,20 @@ export default function App() {
     setEditQuestionModal(true);
   };
 
+  const isWithinRankingPeriod = (dateString?: string) => {
+    if (!dateString) return false;
+    if (!rankingConfig.startDate && !rankingConfig.endDate) return true;
+    const d = new Date(dateString).getTime();
+    const start = rankingConfig.startDate ? new Date(rankingConfig.startDate).getTime() : 0;
+    const end = rankingConfig.endDate ? new Date(rankingConfig.endDate).getTime() + 86399999 : Infinity;
+    return d >= start && d <= end;
+  };
+
   const rankingData = students.map(student => {
-    const subCount = submissions.filter(s => s.studentId === student.id).length;
-    const askCount = questions.filter(q => q.teacherId === student.id && q.isStudentQuestion).length;
+    const subCount = submissions.filter(s => s.studentId === student.id && isWithinRankingPeriod(s.submittedAt)).length;
+    const askCount = questions.filter(q => q.teacherId === student.id && q.isStudentQuestion && isWithinRankingPeriod(q.createdAt)).length;
     let replyCount = 0;
-    submissions.forEach(s => { if (s.peerComments) replyCount += s.peerComments.filter(c => c.authorName === student.name).length; });
+    submissions.forEach(s => { if (s.peerComments) replyCount += s.peerComments.filter(c => c.authorName === student.name && isWithinRankingPeriod(c.createdAt)).length; });
     return { ...student, totalScore: (subCount * 10) + (askCount * 5) + (replyCount * 3), mySubmissionsCount: subCount, myQuestionsCount: askCount, myCommentsCount: replyCount };
   }).filter(s => s.totalScore > 0).sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
 
@@ -753,8 +799,8 @@ export default function App() {
   const pinnedQuestions = filteredStudentQuestions.filter(q => q.isPinned);
   const regularQuestions = filteredStudentQuestions.filter(q => !q.isPinned);
   const filteredTeacherQuestions = questions.filter(q => { const c = teacherQuestionSearch.trim().toLowerCase(); return !c || q.title.toLowerCase().includes(c) || q.tags.some(t => t.toLowerCase().includes(c)); });
-  const pendingTeachers = allUsers.filter(u => u.role === 'pending_teacher');
   const pendingStudents = allUsers.filter(u => u.role === 'pending_student');
+  const approvedMembers = allUsers.filter(u => u.role === 'student' || u.role === 'teacher').filter(u => u.id !== 'teacher_admin');
 
   function renderQuestionCard(q: Question, isHighlight: boolean) {
     const isSolved = currentUser?.role === 'student' && submissions.some(s => s.questionId === q.id && s.studentId === currentUser.id);
@@ -854,22 +900,35 @@ export default function App() {
               </div>
             </div>
 
-            {teacherSubTab === 'content' && rankingData.length > 0 && (
+            {teacherSubTab === 'content' && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-                <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆</h3>
-                <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
-                  {rankingData.map((student, idx) => (
-                    <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
-                      {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
-                      {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
-                      {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
-                      {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">{idx + 1}위</span>}
-                      <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner"><span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span></div>
-                      <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
-                      <span className="text-xs font-black text-indigo-600 mt-1">{student.totalScore}점</span>
-                    </div>
-                  ))}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                  <h3 className="font-extrabold text-lg text-slate-900 flex items-center gap-2"><Award className="text-amber-500" size={24}/> 이달의 열공 랭킹 🏆</h3>
+                  <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <span className="text-xs font-bold text-slate-600">집계 기간:</span>
+                    <input type="date" value={rankingConfig.startDate} onChange={e => setRankingConfig({...rankingConfig, startDate: e.target.value})} className="text-xs p-1.5 rounded-lg border border-slate-300 bg-white" />
+                    <span className="text-slate-400">~</span>
+                    <input type="date" value={rankingConfig.endDate} onChange={e => setRankingConfig({...rankingConfig, endDate: e.target.value})} className="text-xs p-1.5 rounded-lg border border-slate-300 bg-white" />
+                    <button onClick={handleSaveRankingConfig} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors">저장</button>
+                  </div>
                 </div>
+                {rankingData.length > 0 ? (
+                  <div className="flex gap-4 overflow-x-auto pb-4 pt-4 px-2 scrollbar-thin">
+                    {rankingData.map((student, idx) => (
+                      <div key={student.id} className="min-w-[155px] flex flex-col items-center bg-slate-50 border border-slate-100 p-4 rounded-xl relative hover:border-amber-300 transition-colors">
+                        {idx === 0 && <span className="absolute -top-2 bg-amber-400 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">1위 🥇</span>}
+                        {idx === 1 && <span className="absolute -top-2 bg-slate-300 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">2위 🥈</span>}
+                        {idx === 2 && <span className="absolute -top-2 bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">3위 🥉</span>}
+                        {idx > 2 && <span className="absolute -top-2 bg-slate-200 text-slate-600 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">{idx + 1}위</span>}
+                        <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-2 mt-1 shadow-inner"><span className="text-lg font-bold text-indigo-600">{anonymizeName(student.name)[0]}</span></div>
+                        <span className="font-bold text-slate-800 text-sm">{anonymizeName(student.name)}</span>
+                        <span className="text-xs font-black text-indigo-600 mt-1">{student.totalScore}점</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-slate-400 font-bold text-sm">해당 기간 내 집계된 활동 랭킹이 없습니다.</div>
+                )}
               </div>
             )}
 
@@ -995,12 +1054,12 @@ export default function App() {
                     <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50 mb-6">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-indigo-50 border-b border-slate-200 text-indigo-900">
-                          <tr><th className="p-3 font-bold">학번</th><th className="p-3 font-bold">이름</th><th className="p-3 font-bold">구글 이메일</th><th className="p-3 text-right font-bold">승인 제어</th></tr>
+                          <tr><th className="p-3 font-bold">입학년도/학번</th><th className="p-3 font-bold">이름</th><th className="p-3 font-bold">구글 이메일</th><th className="p-3 text-right font-bold">승인 제어</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
                           {pendingStudents.map(ps => (
                             <tr key={ps.id} className="hover:bg-indigo-50/30 transition-colors">
-                              <td className="p-3 font-mono">{ps.studentNumber}</td><td className="p-3 font-bold">{ps.name}</td><td className="p-3 font-mono">{ps.username}</td>
+                              <td className="p-3 font-mono">{ps.admissionYear || '-'} / {ps.studentNumber}</td><td className="p-3 font-bold">{ps.name}</td><td className="p-3 font-mono">{ps.username}</td>
                               <td className="p-3 text-right space-x-2">
                                 <button onClick={() => handleApproveStudent(ps)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">가입 승인</button>
                                 <button onClick={() => handleDeleteUser(ps, '가입 신청을 거절')} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">거절/삭제</button>
@@ -1013,41 +1072,37 @@ export default function App() {
                   </div>
                 )}
                 
-                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">가입 승인된 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
+                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">가입 승인된 회원(학생/교사) 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {approvedMembers.length}명</span></div>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl mb-8">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">이메일 ID</th><th className="p-3.5 text-center font-bold text-slate-600">로그인 횟수</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
+                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">권한</th><th className="p-3.5 font-bold text-slate-600">입학/학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">이메일 ID</th><th className="p-3.5 text-center font-bold text-slate-600">방문</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {students.map(st => (
-                        <tr key={st.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-3.5 font-mono text-slate-500">{st.studentNumber}</td><td className="p-3.5 font-bold">{st.name}</td><td className="p-3.5 font-mono">{st.username}</td>
-                          <td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-1 rounded-md font-bold">{st.loginCount}회</span></td>
-                          <td className="p-3.5 text-right space-x-2"><button onClick={()=>handleDeleteUser(st, '계정을 삭제')} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-colors">학생 제명</button></td>
+                      {approvedMembers.map(member => (
+                        <tr key={member.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${member.role === 'teacher' ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                              {member.role === 'teacher' ? '교사' : '학생'}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-mono text-slate-500">{member.role === 'teacher' ? '-' : `${member.admissionYear || ''} / ${member.studentNumber}`}</td><td className="p-3.5 font-bold">{member.name}</td><td className="p-3.5 font-mono">{member.username}</td>
+                          <td className="p-3.5 text-center"><span className="bg-slate-100 text-slate-600 text-[10px] px-2.5 py-1 rounded-md font-bold">{member.loginCount}회</span></td>
+                          <td className="p-3.5 text-right flex justify-end items-center gap-2">
+                            <select 
+                              value={member.role} 
+                              onChange={(e) => handleUpdateUserRole(member.id, e.target.value)}
+                              className="px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700"
+                            >
+                              <option value="student">학생으로 유지</option>
+                              <option value="teacher">교사로 지정</option>
+                              <option value="pending_student">승인 대기로 강등</option>
+                            </select>
+                            <button onClick={()=>handleDeleteUser(member, '계정을 완전히 삭제')} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-colors">삭제</button>
+                          </td>
                         </tr>
                       ))}
-                      {students.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-bold">등록된 학생이 없습니다.</td></tr>}
+                      {approvedMembers.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400 font-bold">등록된 회원이 없습니다.</td></tr>}
                     </tbody>
                   </table>
-                </div>
-                
-                {/* 💡 교사 대기방 */}
-                <div className="pt-8 border-t border-slate-200">
-                  <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 동료 교사 승인 대기방</h3>
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-amber-50 border-b border-slate-200 text-amber-900"><tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">신청 구글 이메일</th><th className="p-3 font-bold">신청 일자</th><th className="p-3 font-bold">상태</th><th className="p-3 text-right font-bold">권한 승인</th></tr></thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                        {pendingTeachers.map(pt => (
-                          <tr key={pt.id} className="hover:bg-amber-50/30 transition-colors">
-                            <td className="p-3 font-bold">{pt.name}</td><td className="p-3 font-mono">{pt.username}</td><td className="p-3 text-xs font-mono text-slate-500">{pt.joinDate}</td>
-                            <td className="p-3"><span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold">{pt.status}</span></td>
-                            <td className="p-3 text-right space-x-2"><button onClick={() => handleApproveTeacher(pt)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">승인</button><button onClick={() => handleDeleteUser(pt, '교사 가입 신청을 반려')} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">반려</button></td>
-                          </tr>
-                        ))}
-                        {pendingTeachers.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">대기 중인 교사가 없습니다.</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
                 </div>
 
               </div>
@@ -1149,6 +1204,11 @@ export default function App() {
 
       <footer className="mt-auto py-8 text-center border-t border-slate-200 flex flex-col items-center gap-2">
         <p className="text-xs font-bold text-slate-400">ⓒ 2026 Archive Learning Platform.</p>
+        {!currentUser && (
+          <button onClick={handleAdminLogin} className="text-slate-300 hover:text-slate-500 transition-colors p-1" title="관리자 시스템 접속">
+            <Lock size={14} />
+          </button>
+        )}
       </footer>
 
       {/* ==============================================
@@ -1176,19 +1236,20 @@ export default function App() {
               </div>
               
               {googleRoleSelect === 'student' && (
-                <div className="animate-fade-in mt-3">
+                <div className="animate-fade-in mt-3 space-y-3">
+                  <input type="number" value={googleAdmissionYear} onChange={e=>setGoogleAdmissionYear(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="입학 연도 (예: 2024)" required/>
                   <input type="text" value={googleStudentNo} onChange={e=>setGoogleStudentNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번을 입력해주세요 (예: 30101)" required/>
                 </div>
               )}
               
-              {/* 💡 관리자 자동 승인용 시크릿 코드 입력란 */}
+              {/* 💡 관리자 자동 승인용 시크릿 코드 입력란 (교사 선택 시 필수 입력) */}
               {googleRoleSelect === 'teacher' && (
                 <div className="animate-fade-in mt-3">
-                  <input type="password" value={adminSecret} onChange={e=>setAdminSecret(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="관리자 인증 코드 (최초 개설자 전용, 선택)"/>
+                  <input type="password" value={adminSecret} onChange={e=>setAdminSecret(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="관리자 인증 코드 (필수 입력)" required/>
                 </div>
               )}
 
-              <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl mt-4 transition-colors shadow-md ${googleRoleSelect === 'teacher' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>가입 승인 신청하기</button>
+              <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl mt-4 transition-colors shadow-md ${googleRoleSelect === 'teacher' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{googleRoleSelect === 'teacher' ? '관리자 인증 및 바로 접속' : '가입 승인 신청하기'}</button>
             </form>
           </div>
         </div>
