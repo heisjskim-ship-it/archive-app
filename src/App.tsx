@@ -48,7 +48,6 @@ const Check: React.FC<IconProps> = ({ size=24, className="", strokeWidth=2 }) =>
 const AlertCircle: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
 const Search: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
 const Users: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
-const Lock: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 const MessageSquare: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 const Sparkles: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>;
 const Pin: React.FC<IconProps> = ({ size=24, className="" }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
@@ -152,8 +151,6 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null); 
   const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
     if (typeof window !== 'undefined') {
-      const admin = window.localStorage.getItem('adminSession') === 'true';
-      if (admin) return { id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' };
       const localUser = window.localStorage.getItem('savedUser');
       if (localUser) {
         try { return JSON.parse(localUser); } catch(e) {}
@@ -164,11 +161,12 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false); 
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // 💡 구글 소셜 전용 회원가입 모달 상태
-  const [authModal, setAuthModal] = useState<{ show: boolean; mode: 'role_selection' }>({ show: false, mode: 'role_selection' }); 
+  // 💡 구글 100% 전용 전환: 역할 선택 모달만 남김
+  const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
   const [pendingGoogleUser, setPendingGoogleUser] = useState<FirebaseUser | null>(null);
   const [googleRoleSelect, setGoogleRoleSelect] = useState<'student' | 'teacher'>('student');
   const [googleStudentNo, setGoogleStudentNo] = useState('');
+  const [adminSecret, setAdminSecret] = useState(''); // 💡 관리자 자동 승급용 시크릿 코드
   
   const [tutorial, setTutorial] = useState<{ show: boolean; role: string; step: number }>({ show: false, role: '', step: 0 });
 
@@ -241,7 +239,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // 💡 400 Bad Request 제거를 위해 익명 로그인(signInAnonymously) 로직 100% 폐기
     const initCanvasAuth = async () => {
       if (isCanvas && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         try { await signInWithCustomToken(auth, __initial_auth_token); } catch (e) {}
@@ -269,18 +266,13 @@ export default function App() {
             // DB에 데이터가 없으면 신규 가입 역할 선택 모달 오픈
             if (user.providerData.some(p => p.providerId === 'google.com')) {
               setPendingGoogleUser(user);
-              setAuthModal({ show: true, mode: 'role_selection' });
+              setShowRoleModal(true);
             }
           }
         } catch (err) {}
       } else {
-        const admin = localStorage.getItem('adminSession') === 'true';
-        if (admin) {
-          setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
-        } else {
-          setCurrentUser(null);
-          localStorage.removeItem('savedUser');
-        }
+        setCurrentUser(null);
+        localStorage.removeItem('savedUser');
       }
       setIsAuthLoading(false);
     });
@@ -438,7 +430,7 @@ export default function App() {
     }));
   };
 
-  // 💡 메인 구글 로그인 호출 로직
+  // 💡 구글 소셜 100% 단독 로그인 로직
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
@@ -451,7 +443,7 @@ export default function App() {
         const userData = userDoc.data() as UserData;
         if (userData.role === 'pending_teacher' || userData.role === 'pending_student') {
           await signOut(auth);
-          alertMessage('아직 가입 승인이 완료되지 않았습니다. 관리자/선생님의 승인을 기다려주세요.');
+          alertMessage('가입 승인 대기 중입니다. 선생님의 승인을 기다려주세요.');
         } else {
           await updateDoc(userDocRef, { loginCount: (userData.loginCount || 0) + 1 });
           const loggedUser = { id: user.uid, ...userData, loginCount: (userData.loginCount || 0) + 1 };
@@ -463,14 +455,14 @@ export default function App() {
       } else {
         // DB에 정보가 없는 완전 신규 유저
         setPendingGoogleUser(user);
-        setAuthModal({ show: true, mode: 'role_selection' });
+        setShowRoleModal(true);
       }
     } catch (error: any) {
       console.error("구글 로그인 에러:", error);
       if (error.code === 'auth/popup-blocked') {
         alertMessage('팝업이 차단되었습니다. 브라우저 팝업 차단을 해제해 주세요.');
       } else if (error.code === 'auth/unauthorized-domain') {
-        alertMessage('Firebase 콘솔에 Vercel 도메인을 추가해주세요.');
+        alertMessage('Firebase 콘솔에 접속 중인 웹 도메인을 추가해주세요.');
       } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
         alertMessage('구글 로그인 실패: ' + error.message);
       }
@@ -500,36 +492,37 @@ export default function App() {
         };
         await setDoc(userDocRef, newStudentData);
         alertMessage(`✨ [${newStudentData.name}] 학생 가입 신청 완료! 선생님 승인 후 접속 가능합니다.`);
+        await signOut(auth);
       } else {
-        const newTeacherData: Omit<UserData, 'id'> = {
-          role: 'pending_teacher',
+        // 💡 관리자 자동 승급 시크릿 코드 검증
+        const isCreator = adminSecret === 'tlagkr1!';
+        const newTeacherData: UserData = {
+          id: pendingGoogleUser.uid,
+          role: isCreator ? 'teacher' : 'pending_teacher',
           name: pendingGoogleUser.displayName || '선생님',
           username: pendingGoogleUser.email?.split('@')[0] || pendingGoogleUser.uid,
           joinDate: new Date().toISOString().split('T')[0],
-          loginCount: 0,
-          status: '승인대기'
+          loginCount: isCreator ? 1 : 0,
+          status: isCreator ? '활동중' : '승인대기'
         };
         await setDoc(userDocRef, newTeacherData);
-        alertMessage(`✨ [${newTeacherData.name}] 교사 가입 신청 완료! 관리자 승인 후 접속 가능합니다.`);
+        
+        if (isCreator) {
+          alertMessage(`✨ 관리자 인증 완료! 교사로 즉시 가입되었습니다.`);
+          setCurrentUser(newTeacherData);
+          localStorage.setItem('savedUser', JSON.stringify(newTeacherData));
+        } else {
+          alertMessage(`✨ 교사 가입 신청 완료! 관리자 승인 후 접속 가능합니다.`);
+          await signOut(auth);
+        }
       }
-      await signOut(auth);
       setPendingGoogleUser(null);
-      setAuthModal({ show: false, mode: 'role_selection' });
+      setShowRoleModal(false);
+      setAdminSecret('');
     } catch(err: any) {
       alertMessage('등록 오류: ' + err.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleAdminLogin = () => {
-    const pw = window.prompt('최고 관리자 비밀번호를 입력하세요.');
-    if (pw === 'tlagkr1!') {
-      localStorage.setItem('adminSession', 'true');
-      setCurrentUser({ id: 'teacher_admin', name: '최고 관리자', role: 'teacher', username: 'admin' });
-      alertMessage('최고 관리자 모드로 로그인했습니다.');
-    } else if (pw !== null) {
-      alertMessage('비밀번호가 일치하지 않습니다.');
     }
   };
 
@@ -545,27 +538,32 @@ export default function App() {
   };
 
   const completeTutorial = async () => {
-    if (tutorial.role === 'student' && currentUser && currentUser.id !== 'teacher_admin') {
+    if (tutorial.role === 'student' && currentUser && currentUser.role === 'student') {
       await updateDoc(doc(getColRef('users'), currentUser.id), { hasSeenTutorial: true });
     }
     alertMessage('튜토리얼 완료!'); setTutorial({ show: false, role: '', step: 0 });
+  };
+
+  // 💡 통합된 계정 삭제 및 거절 관리 핸들러
+  const handleDeleteUser = (userToDel: UserData, actionText: string) => {
+    setConfirmModal({
+      show: true, title: '계정 제어', message: `[${userToDel.name}] 님의 ${actionText}하시겠습니까?`, isDanger: true,
+      onConfirm: async () => {
+        setIsLoading(true);
+        try { 
+          await deleteDoc(doc(getColRef('users'), userToDel.id)); 
+          alertMessage('정상적으로 처리되었습니다.'); 
+        } 
+        catch(err: any) { alertMessage('오류: ' + err.message); } 
+        finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
+      }
+    });
   };
 
   const handleApproveTeacher = async (teacher: UserData) => {
     setIsLoading(true);
     try { await updateDoc(doc(getColRef('users'), teacher.id), { role: 'teacher', status: '활동중' }); alertMessage('[' + teacher.name + '] 임용 승인 완료!'); } 
     catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); }
-  };
-
-  const handleRejectTeacher = async (teacher: UserData) => {
-    setConfirmModal({
-      show: true, title: '삭제 확인', message: '[' + teacher.name + '] 계정을 삭제하시겠습니까?', isDanger: true,
-      onConfirm: async () => {
-        setIsLoading(true);
-        try { await deleteDoc(doc(getColRef('users'), teacher.id)); alertMessage('삭제 처리되었습니다.'); } 
-        catch (err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
-      }
-    });
   };
 
   const handleApproveStudent = async (student: UserData) => {
@@ -585,17 +583,6 @@ export default function App() {
       await updateDoc(doc(getColRef('questions'), editingQuestion.id), { title: editingQuestion.title, tags: editingQuestion.tags, imageUrls: finalImageUrls, isPinned: editingQuestion.isPinned, isChallenge: editingQuestion.isChallenge });
       alertMessage('수정되었습니다! ✨'); setEditQuestionModal(false); setEditingQuestion(null);
     } catch (err: any) { alertMessage('수정 실패: ' + err.message); } finally { setIsLoading(false); }
-  };
-
-  const handleDeleteStudent = (student: UserData) => {
-    setConfirmModal({
-      show: true, title: '학생 제명', message: '[' + student.name + '] 데이터를 삭제합니다.', isDanger: true,
-      onConfirm: async () => {
-        setIsLoading(true);
-        try { await deleteDoc(doc(getColRef('users'), student.id)); alertMessage('삭제됨.'); } 
-        catch(err: any) { alertMessage('오류: ' + err.message); } finally { setIsLoading(false); setConfirmModal({ show: false, title: '', message: '', onConfirm: null, isDanger: false }); }
-      }
-    });
   };
 
   const handleAddQuestion = async (e: React.FormEvent) => {
@@ -686,7 +673,7 @@ export default function App() {
     try {
       let finalFeedbackUrl = selectedQuestion.feedbackImageUrl || '';
       if (feedbackInputImage) finalFeedbackUrl = await uploadToCloudinary(feedbackInputImage);
-      await updateDoc(doc(getColRef('questions'), selectedQuestion.id), { feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: new Date().toISOString(), status: '답변 완료' });
+      await updateDoc(doc(getColRef('questions'), selectedQuestion.id), { feedbackText: feedbackInputText, feedbackImageUrl: finalFeedbackUrl, feedbackAt: new Date().toISOString(), status: '답 완료' });
       alertMessage('질문에 대한 코칭 답변이 전송되었습니다!');
       setFeedbackInputText(''); setFeedbackInputImage(null); setFeedbackInputImagePreview(''); setSelectedQuestion(null);
     } catch (err: any) { alertMessage('답변 전송 실패: ' + err.message); } finally { setIsLoading(false); }
@@ -819,10 +806,14 @@ export default function App() {
         * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
       `}</style>
 
+      {/* 💡 무한 로딩 방지 및 취소 버튼이 적용된 전역 로더 */}
       {isLoading && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-center z-[200]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center z-[200]">
           <Loader2 className="text-white animate-spin mb-3" size={48} />
           <p className="text-white font-bold text-sm tracking-widest animate-pulse">처리 중입니다...</p>
+          <button onClick={() => setIsLoading(false)} className="mt-8 px-5 py-2 bg-white/20 hover:bg-white/30 text-white rounded-full text-xs font-bold backdrop-blur transition-colors shadow-sm">
+            취소 / 닫기
+          </button>
         </div>
       )}
 
@@ -838,7 +829,7 @@ export default function App() {
             <button onClick={handleInstallApp} className="text-slate-500 hover:text-indigo-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-xl transition-colors shadow-sm"><Download size={14} /> <span className="hidden sm:inline">앱 설치</span></button>
             <button onClick={() => setTutorial({ show: true, role: currentUser?.role || 'student', step: 0 })} className="text-slate-500 hover:text-indigo-600 flex items-center gap-1 text-xs font-bold bg-slate-100 px-3 py-2 rounded-xl transition-colors shadow-sm"><Sparkles size={14} /> <span className="hidden sm:inline">가이드</span></button>
             
-            {/* 💡 헤더 로그인 버튼 - 단일 구글 버튼으로 교체 */}
+            {/* 💡 100% 구글 로그인 전용 버튼 */}
             {!currentUser ? (
               <button onClick={handleGoogleLogin} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors">
                 <GoogleIcon /> 구글로 시작하기
@@ -859,7 +850,7 @@ export default function App() {
             <div className="bg-white border border-slate-200 p-2 rounded-2xl flex items-center justify-between shadow-sm">
               <div className="flex gap-2">
                 <button onClick={() => setTeacherSubTab('content')} className={`px-5 py-2.5 rounded-xl text-sm font-extrabold flex items-center gap-2 transition-all ${teacherSubTab === 'content' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}><FileText size={18} /> 기출/현황 관리</button>
-                <button onClick={() => setTeacherSubTab('members')} className={`px-5 py-2.5 rounded-xl text-sm font-extrabold flex items-center gap-2 transition-all ${teacherSubTab === 'members' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}><Paperclip className="hidden" /><Users size={18} /> 학생 관리 <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{students.length}</span></button>
+                <button onClick={() => setTeacherSubTab('members')} className={`px-5 py-2.5 rounded-xl text-sm font-extrabold flex items-center gap-2 transition-all ${teacherSubTab === 'members' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}><Users size={18} /> 학급 관리 <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{students.length}</span></button>
               </div>
             </div>
 
@@ -997,7 +988,7 @@ export default function App() {
             ) : (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                 
-                {/* 💡 선생님 화면: 학생 가입 승인 대기방 추가 */}
+                {/* 💡 학생 대기방 */}
                 {pendingStudents.length > 0 && (
                   <div className="mb-8">
                     <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 학생 승인 대기방</h3>
@@ -1012,7 +1003,7 @@ export default function App() {
                               <td className="p-3 font-mono">{ps.studentNumber}</td><td className="p-3 font-bold">{ps.name}</td><td className="p-3 font-mono">{ps.username}</td>
                               <td className="p-3 text-right space-x-2">
                                 <button onClick={() => handleApproveStudent(ps)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">가입 승인</button>
-                                <button onClick={() => handleDeleteStudent(ps)} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">거절/삭제</button>
+                                <button onClick={() => handleDeleteUser(ps, '가입 신청을 거절')} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">거절/삭제</button>
                               </td>
                             </tr>
                           ))}
@@ -1023,7 +1014,7 @@ export default function App() {
                 )}
                 
                 <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-900">가입 승인된 학생 목록</h3><span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-bold">총 {students.length}명</span></div>
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <div className="overflow-x-auto border border-slate-200 rounded-xl mb-8">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="p-3.5 font-bold text-slate-600">학번</th><th className="p-3.5 font-bold text-slate-600">이름</th><th className="p-3.5 font-bold text-slate-600">이메일 ID</th><th className="p-3.5 text-center font-bold text-slate-600">로그인 횟수</th><th className="p-3.5 text-right font-bold text-slate-600">계정 제어</th></tr></thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1031,7 +1022,7 @@ export default function App() {
                         <tr key={st.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-3.5 font-mono text-slate-500">{st.studentNumber}</td><td className="p-3.5 font-bold">{st.name}</td><td className="p-3.5 font-mono">{st.username}</td>
                           <td className="p-3.5 text-center"><span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-1 rounded-md font-bold">{st.loginCount}회</span></td>
-                          <td className="p-3.5 text-right space-x-2"><button onClick={()=>handleDeleteStudent(st)} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-colors">삭제</button></td>
+                          <td className="p-3.5 text-right space-x-2"><button onClick={()=>handleDeleteUser(st, '계정을 삭제')} className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-colors">학생 제명</button></td>
                         </tr>
                       ))}
                       {students.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400 font-bold">등록된 학생이 없습니다.</td></tr>}
@@ -1039,26 +1030,26 @@ export default function App() {
                   </table>
                 </div>
                 
-                {currentUser.id === 'teacher_admin' && (
-                  <div className="pt-8 border-t border-slate-200 mt-8">
-                    <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 교사 승인 대기방</h3>
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50 mb-6">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-amber-50 border-b border-slate-200 text-amber-900"><tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">신청 이메일</th><th className="p-3 font-bold">신청 일자</th><th className="p-3 font-bold">상태</th><th className="p-3 text-right font-bold">권한 승인</th></tr></thead>
-                        <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                          {pendingTeachers.map(pt => (
-                            <tr key={pt.id} className="hover:bg-amber-50/30 transition-colors">
-                              <td className="p-3 font-bold">{pt.name}</td><td className="p-3 font-mono">{pt.username}</td><td className="p-3 text-xs font-mono text-slate-500">{pt.joinDate}</td>
-                              <td className="p-3"><span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold">{pt.status}</span></td>
-                              <td className="p-3 text-right space-x-2"><button onClick={() => handleApproveTeacher(pt)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">승인</button><button onClick={() => handleRejectTeacher(pt)} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">반려</button></td>
-                            </tr>
-                          ))}
-                          {pendingTeachers.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">대기 중인 교사가 없습니다.</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
+                {/* 💡 교사 대기방 */}
+                <div className="pt-8 border-t border-slate-200">
+                  <h3 className="font-extrabold text-lg text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-amber-500" size={20}/> 동료 교사 승인 대기방</h3>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/50">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-amber-50 border-b border-slate-200 text-amber-900"><tr><th className="p-3 font-bold">성함</th><th className="p-3 font-bold">신청 구글 이메일</th><th className="p-3 font-bold">신청 일자</th><th className="p-3 font-bold">상태</th><th className="p-3 text-right font-bold">권한 승인</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                        {pendingTeachers.map(pt => (
+                          <tr key={pt.id} className="hover:bg-amber-50/30 transition-colors">
+                            <td className="p-3 font-bold">{pt.name}</td><td className="p-3 font-mono">{pt.username}</td><td className="p-3 text-xs font-mono text-slate-500">{pt.joinDate}</td>
+                            <td className="p-3"><span className="bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold">{pt.status}</span></td>
+                            <td className="p-3 text-right space-x-2"><button onClick={() => handleApproveTeacher(pt)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm">승인</button><button onClick={() => handleDeleteUser(pt, '교사 가입 신청을 반려')} className="px-3 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg text-xs font-bold transition-colors">반려</button></td>
+                          </tr>
+                        ))}
+                        {pendingTeachers.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400 font-bold text-xs">대기 중인 교사가 없습니다.</td></tr>}
+                      </tbody>
+                    </table>
                   </div>
-                )}
+                </div>
+
               </div>
             )}
           </div>
@@ -1073,7 +1064,7 @@ export default function App() {
                 <div className="bg-white/10 backdrop-blur p-5 rounded-2xl border border-white/20 text-center shrink-0 w-full md:w-auto z-10">
                   <p className="text-sm font-extrabold text-white mb-3">구글 계정으로 1초 만에 시작하세요</p>
                   <button onClick={handleGoogleLogin} className="w-full py-3.5 px-6 bg-white hover:bg-slate-50 text-indigo-700 border-2 border-transparent hover:border-indigo-200 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98]">
-                    <GoogleIcon /> 구글 계정으로 로그인/가입
+                    <GoogleIcon /> 구글 계정으로 시작
                   </button>
                 </div>
               )}
@@ -1156,16 +1147,8 @@ export default function App() {
         )}
       </main>
 
-      {/* ==============================================
-          💡 푸터 & 관리자 시크릿 로그인 모드
-      ============================================== */}
       <footer className="mt-auto py-8 text-center border-t border-slate-200 flex flex-col items-center gap-2">
         <p className="text-xs font-bold text-slate-400">ⓒ 2026 Archive Learning Platform.</p>
-        {!currentUser && (
-          <button onClick={handleAdminLogin} className="text-slate-300 hover:text-slate-500 transition-colors p-1" title="관리자 시스템 접속">
-            <Lock size={14} />
-          </button>
-        )}
       </footer>
 
       {/* ==============================================
@@ -1173,14 +1156,14 @@ export default function App() {
       ============================================== */}
 
       {/* 1. 인증(Auth) 역할 선택 모달 */}
-      {authModal.show && (
+      {showRoleModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
             <div className="flex justify-between items-center mb-5 border-b pb-3">
               <h3 className="font-extrabold text-lg text-slate-900">
                 구글 연동 완료 🎉
               </h3>
-              <button onClick={() => setAuthModal({ show: false, mode: 'role_selection' })} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
+              <button onClick={() => setShowRoleModal(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full transition-colors"><X size={18}/></button>
             </div>
             
             <form onSubmit={handleRoleSelectionSubmit} className="space-y-4">
@@ -1191,11 +1174,20 @@ export default function App() {
                 <button type="button" onClick={() => setGoogleRoleSelect('student')} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${googleRoleSelect === 'student' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>👨‍🎓 학생</button>
                 <button type="button" onClick={() => setGoogleRoleSelect('teacher')} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${googleRoleSelect === 'teacher' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>🧑‍🏫 선생님</button>
               </div>
+              
               {googleRoleSelect === 'student' && (
                 <div className="animate-fade-in mt-3">
                   <input type="text" value={googleStudentNo} onChange={e=>setGoogleStudentNo(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="학번을 입력해주세요 (예: 30101)" required/>
                 </div>
               )}
+              
+              {/* 💡 관리자 자동 승인용 시크릿 코드 입력란 */}
+              {googleRoleSelect === 'teacher' && (
+                <div className="animate-fade-in mt-3">
+                  <input type="password" value={adminSecret} onChange={e=>setAdminSecret(e.target.value)} className="w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="관리자 인증 코드 (최초 개설자 전용, 선택)"/>
+                </div>
+              )}
+
               <button type="submit" className={`w-full py-3.5 text-white font-bold rounded-xl mt-4 transition-colors shadow-md ${googleRoleSelect === 'teacher' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>가입 승인 신청하기</button>
             </form>
           </div>
